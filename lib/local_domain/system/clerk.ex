@@ -14,9 +14,13 @@ defmodule Anoma.LocalDomain.System.Clerk do
   end
 
   def register_application(module) do
-    current = Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications")
-    Anoma.LocalDomain.Storage.write_local(~k"/clerk/applications",
-      current |> MapSet.put(module))
+    {:ok, current} =
+      Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications")
+
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/clerk/applications",
+      current |> MapSet.put(module)
+    )
   end
 
   @impl true
@@ -30,8 +34,11 @@ defmodule Anoma.LocalDomain.System.Clerk do
         :ok
 
       :absent ->
-        Anoma.LocalDomain.Storage.write_local(~k"/clerk/applications",
-          MapSet.new([__MODULE__]))
+        Anoma.LocalDomain.Storage.write_local(
+          ~k"/clerk/applications",
+          MapSet.new([__MODULE__])
+        )
+
         :ok
     end
   end

@@ -38,7 +38,7 @@ defmodule Anoma.LocalDomain.Scry do
     [_local_id, _time | subkey] = key
     # use the subkey's handler, if any
     with {:ok, result} <- scry_inner(prev_prefixes, subkey) do
-      result
+      {:ok, result}
     else
       :absent ->
         :absent
