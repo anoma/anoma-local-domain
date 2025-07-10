@@ -7,6 +7,7 @@ defmodule Anoma.LocalDomain.SampleApplication do
   """
 
   use Anoma.LocalDomain.Application, name: "sample"
+  use Anoma.LocalDomain.DefScry
 
   # Public API
 
@@ -32,18 +33,12 @@ defmodule Anoma.LocalDomain.SampleApplication do
 
   # Callbacks
 
-  @impl true
-  def scry(_, ~k"pubkey/!name") do
-    with {:ok, privkey} <-
-           Anoma.LocalDomain.Scry.scry(
+  defscry do
+    (_prev_prefixes, ~k"pubkey/!name") ->
+      with {:ok, privkey} <- Anoma.LocalDomain.Scry.scry(
              ~k"/anoma/local/foo/bar/sample/privkey/!name"
            ) do
-      {:ok, "PUBLIC_" <> privkey}
-    end
-  end
-
-  @impl true
-  def scry(prev_prefixes, key) do
-    super(prev_prefixes, key)
+        {:ok, "PUBLIC_" <> privkey}
+      end 
   end
 end
