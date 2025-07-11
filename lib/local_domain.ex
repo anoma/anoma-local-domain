@@ -27,22 +27,43 @@ defmodule Anoma.LocalDomain do
       ["a", "b", "matched c"]
       iex> c
       "matched c"
+
+      iex> :rest
+      rest
+      iex> ~k"/a/b/!c/&rest" = ["a", "b", "matched c", "d", "e"]
+      iex> rest
+      ["d", "e"]
   """
   defmacro sigil_k({:<<>>, _meta, [string]}, _opts) do
-    key =
+    {key, rest} =
       string
       |> String.split("/", trim: true)
-      |> Enum.map(&sigil_k_segment/1)
+      |>sigil_k_segment([])
 
-    quote do: [unquote_splicing(key)]
+    # Sadly unquote_splicing/1 requires a proper list
+    if rest do
+      quote do: [unquote_splicing(key) | unquote(rest)]
+    else
+      quote do: [unquote_splicing(key)]
+    end
   end
 
-  defp sigil_k_segment("!" <> var) do
+  # todo: currently no handling for string interpolation 
+  defp sigil_k_segment([], acc) do
+    {Enum.reverse(acc), nil}
+  end
+  
+  defp sigil_k_segment([("!" <> var)|rest], acc) do
     # todo: for patterns, maybe not to_existing_atom?
-    {String.to_existing_atom(var), [], nil}
+    sigil_k_segment(rest, [{String.to_existing_atom(var), [], nil}|acc])
   end
 
-  defp sigil_k_segment(literal) do
-    literal
+  defp sigil_k_segment([("&" <> var)|_], acc) do
+    # todo: for patterns, maybe not to_existing_atom?
+    {Enum.reverse(acc), {String.to_existing_atom(var), [], nil}}
+  end
+  
+  defp sigil_k_segment([literal|rest], acc) do
+    sigil_k_segment(rest, [literal|acc])
   end
 end
