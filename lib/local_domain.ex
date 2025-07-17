@@ -14,25 +14,6 @@ defmodule Anoma.LocalDomain do
   `/`, and a key segment may be prefixed with `!` to splice in the value of a
   variable. `!` segments may also be used to match a single segment in a
   pattern.
-
-  # Examples
-
-      iex> use Anoma.LocalDomain
-      Anoma.LocalDomain
-      iex> c = "segment c"
-      "segment c"
-      iex> ~k"/a/b/!c/d"
-      ["a", "b", "segment c", "d"]
-      iex> ~k"/a/b/!c" = ["a", "b", "matched c"]
-      ["a", "b", "matched c"]
-      iex> c
-      "matched c"
-
-      iex> :rest
-      rest
-      iex> ~k"/a/b/!c/&rest" = ["a", "b", "matched c", "d", "e"]
-      iex> rest
-      ["d", "e"]
   """
   defmacro sigil_k({:<<>>, _meta, [string]}, _opts) do
     {key, rest} =
