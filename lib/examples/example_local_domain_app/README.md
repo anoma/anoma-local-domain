@@ -1,4 +1,4 @@
-# Anoma.LocalDomain.Negotiate
+# Anoma.LocalDomain.Factory
 
 **TODO: Add description**
 

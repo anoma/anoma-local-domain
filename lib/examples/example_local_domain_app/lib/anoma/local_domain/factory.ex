@@ -7,7 +7,7 @@ defmodule Anoma.LocalDomain.Factory do
   use Anoma.LocalDomain.DefScry
 
   
-  @spec store(String.t(), String.t(), (any() -> any())) :: any()
+  @spec store(String.t(), String.t(), (term() -> term())) :: term()
   def store(name, method, key) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/api_handler/!name/!method",
