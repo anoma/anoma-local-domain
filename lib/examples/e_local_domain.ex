@@ -12,7 +12,7 @@ defmodule Examples.ELocalDomain do
     c = "segment c"
 
     assert ~k"/a/b/!c" == ["a", "b", "segment c"]
-    
+
     ~k"/a/b/!c" = ["a", "b", "matched c"]
 
     assert c == "matched c"

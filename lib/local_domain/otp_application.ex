@@ -12,10 +12,17 @@ defmodule Anoma.LocalDomain.OTPApplication do
   def start(_type, _args) do
     children = [
       Anoma.LocalDomain.Scry.HandlerRegistry,
-      Anoma.LocalDomain.Storage
+      Anoma.LocalDomain.Storage,
+      %{
+        id: Anoma.LocalDomain.ApplicationStartup,
+        restart: :transient,
+        start:
+          {Anoma.LocalDomain.ApplicationStartup, :start_applications,
+           []}
+      }
     ]
 
-    opts = [strategy: :one_for_one, name: AnomaLocalDomain.Supervisor]
+    opts = [strategy: :one_for_one, name: Anoma.LocalDomain.Supervisor]
     Supervisor.start_link(children, opts)
   end
 end

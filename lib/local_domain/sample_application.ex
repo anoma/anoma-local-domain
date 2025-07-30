@@ -34,11 +34,12 @@ defmodule Anoma.LocalDomain.SampleApplication do
   # Callbacks
 
   defscry do
-    (_prev_prefixes, ~k"pubkey/!name") ->
-      with {:ok, privkey} <- Anoma.LocalDomain.Scry.scry(
-             ~k"/anoma/local/foo/bar/sample/privkey/!name"
-           ) do
+    _prev_prefixes, ~k"pubkey/!name" ->
+      with {:ok, privkey} <-
+             Anoma.LocalDomain.Scry.scry(
+               ~k"/anoma/local/foo/bar/sample/privkey/!name"
+             ) do
         {:ok, "PUBLIC_" <> privkey}
-      end 
+      end
   end
 end

@@ -9,25 +9,26 @@ defmodule Anoma.LocalDomain.System.Prover do
 
   defmacro __using__(_opts) do
     quote do
-
       @behaviour Anoma.LocalDomain.System.Prover
 
       def prove(_provingkey, _instance, _witness) do
         {:error, :no_handler}
       end
-      
+
       defoverridable prove: 3
 
       def verify(_verifyingkey, _instance, _proof) do
         {:error, :no_handler}
       end
-      
+
       defoverridable verify: 3
-    end    
+    end
   end
 
-  @callback prove(binary(), term(), term()) :: {:ok, term()} | {:error, term()}
-  @callback verify(binary(), term(), term()) :: {:ok, term()} | {:error, term()}
+  @callback prove(binary(), term(), term()) ::
+              {:ok, term()} | {:error, term()}
+  @callback verify(binary(), term(), term()) ::
+              {:ok, term()} | {:error, term()}
 
   def get_systems() do
     Anoma.LocalDomain.Storage.read_local(~k"/prover/systems")
@@ -41,7 +42,7 @@ defmodule Anoma.LocalDomain.System.Prover do
       ~k"/prover/systems",
       current |> MapSet.put(name)
     )
-    end
+  end
 
   @impl true
   def init() do
@@ -61,8 +62,7 @@ defmodule Anoma.LocalDomain.System.Prover do
         :ok
     end
   end
-  
- 
+
   # defscry do
   #   (_prev_prefixes, ~k"/prove/!system/!provingkey/!instance/!witness") ->
   #     :instance
@@ -76,5 +76,4 @@ defmodule Anoma.LocalDomain.System.Prover do
   #     :system
   #     true
   # end
-  
 end

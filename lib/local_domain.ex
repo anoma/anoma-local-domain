@@ -19,7 +19,7 @@ defmodule Anoma.LocalDomain do
     {key, rest} =
       string
       |> String.split("/", trim: true)
-      |>sigil_k_segment([])
+      |> sigil_k_segment([])
 
     # Sadly unquote_splicing/1 requires a proper list
     if rest do
@@ -33,18 +33,20 @@ defmodule Anoma.LocalDomain do
   defp sigil_k_segment([], acc) do
     {Enum.reverse(acc), nil}
   end
-  
-  defp sigil_k_segment([("!" <> var)|rest], acc) do
+
+  defp sigil_k_segment(["!" <> var | rest], acc) do
     # todo: for patterns, maybe not to_existing_atom?
-    sigil_k_segment(rest, [{String.to_existing_atom(var), [], nil}|acc])
+    sigil_k_segment(rest, [
+      {String.to_existing_atom(var), [], nil} | acc
+    ])
   end
 
-  defp sigil_k_segment([("&" <> var)|_], acc) do
+  defp sigil_k_segment(["&" <> var | _], acc) do
     # todo: for patterns, maybe not to_existing_atom?
     {Enum.reverse(acc), {String.to_existing_atom(var), [], nil}}
   end
-  
-  defp sigil_k_segment([literal|rest], acc) do
-    sigil_k_segment(rest, [literal|acc])
+
+  defp sigil_k_segment([literal | rest], acc) do
+    sigil_k_segment(rest, [literal | acc])
   end
 end
