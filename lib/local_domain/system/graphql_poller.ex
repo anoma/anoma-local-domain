@@ -22,6 +22,10 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller do
     )
   end
 
+  def read_endpoint() do
+    Anoma.LocalDomain.Storage.read_latest(~k"/poller/graphql_endpoint")
+  end
+
   def read_blockheight() do
     Anoma.LocalDomain.Storage.read_latest(~k"/poller/blockheight")
   end
@@ -33,7 +37,37 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller do
     )
   end
 
-  def write_cipher() do
+  def write_cipher(tag, cipher, cipherkey) do
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/cipher/!tag",
+      {:key, cipherkey, :cipher, cipher}
+    )
+  end
+
+  def read_cipher_keys() do
+    cipher_keys =
+      case Anoma.LocalDomain.Storage.ls(~k"/poller/cipherkey") do
+        :absent ->
+          []
+
+        {:ok, cipher_key_keys} ->
+          cipher_key_keys
+          |> MapSet.to_list()
+          |> Enum.map(fn k ->
+            with {:ok, v} <- Anoma.LocalDomain.Storage.read_latest(k) do
+              v
+            end
+          end)
+      end
+
+    {:ok, cipher_keys}
+  end
+
+  def write_transaction_resource(tag, owner, resource) do
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/resource/!tag",
+      {:owner, owner, :resource, resource}
+    )
   end
 
   @impl true
@@ -52,7 +86,11 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller do
       strategy: :one_for_one,
       name: __MODULE__.Supervisor
     )
+
+    :ok
   end
+
+  ## TODO Add scry paths for adding a cipher key (add to storage + dispatch to polling app) + retrieval of transaction resource from storage
 
   # defscry do
   #   _prev_prefixes, ~k"/" ->
