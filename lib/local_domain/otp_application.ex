@@ -19,7 +19,9 @@ defmodule Anoma.LocalDomain.OTPApplication do
         start:
           {Anoma.LocalDomain.ApplicationStartup, :start_applications,
            []}
-      }
+      },
+      {DynamicSupervisor,
+       name: AppTasksSupervisor, strategy: :one_for_one}
     ]
 
     opts = [strategy: :one_for_one, name: Anoma.LocalDomain.Supervisor]
