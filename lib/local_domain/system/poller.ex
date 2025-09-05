@@ -17,7 +17,11 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
     state = %{
       cipher_keys: cipher_keys,
       endpoint: endpoint,
-      blockheight: 0
+      blockheight:
+        case read_blockheight() do
+          {:ok, blockheight} -> blockheight
+          :absent -> 0
+        end
     }
 
     Process.send_after(self(), :tick, 0)
@@ -70,6 +74,17 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
     )
   end
 
+  def read_blockheight() do
+    Anoma.LocalDomain.Storage.read_latest(~k"/poller/blockheight")
+  end
+
+  def write_blockheight(height) do
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/poller/blockheight",
+      height
+    )
+  end
+
   @impl true
   def handle_info(
         :tick,
@@ -116,6 +131,7 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
                   IO.puts(other)
               end
 
+              write_blockheight(next_blockheight)
               next_blockheight
 
             false ->
