@@ -7,6 +7,8 @@ defmodule IndexerWeb.Application do
 
   @impl true
   def start(_type, _args) do
+    Anoma.LocalDomain.System.Poller.start()
+
     children = [
       {Plug.Cowboy, scheme: :http, plug: IndexerWeb.Router, options: [port: 4000]}
       # Starts a worker by calling: IndexerWeb.Worker.start_link(arg)

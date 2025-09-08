@@ -1,4 +1,4 @@
-defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
+defmodule Anoma.LocalDomain.System.Poller do
   @moduledoc """
   I poll for events from a graphQL endpoint for a protocol adapter contract indexer.
   """
@@ -31,29 +31,65 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
 
   def transactionExecutedQuery() do
     """
-      query($min: Int!, $max: Int!) {
-      raw_events(order_by: {block_number: desc}, where: {block_number: {_gt: $min, _lte: $max}}) {
-      block_hash
-      block_number
-      block_fields
-      event_name
-      params
+    query($min: numeric!) {
+    ProtocolAdapter_TransactionExecuted(order_by: {blockNumber: desc}, where: {blockNumber:   {_gt: $min}}) {
+      id
+      transaction {
+        id
+        deltaProof
+        actions {
+          id
+          logicVerifierInputs {
+            appData {
+              id
+              discoveryPayload {
+                id
+                blob
+              }
+              resourcePayload {
+                id
+                blob
+              }
+            }
+            tag
+          }
+        }
       }
-      }
+      blockNumber
+    }
+    }
     """
   end
 
   def transactionExecutedFullQuery() do
     """
-      query {
-      raw_events {
-      block_hash
-      block_number
-      block_fields
-      event_name
-      params
+    query {
+    ProtocolAdapter_TransactionExecuted(order_by: {blockNumber: desc}) {
+      id
+      transaction {
+        id
+        deltaProof
+        actions {
+          id
+          logicVerifierInputs {
+            appData {
+              id
+              discoveryPayload {
+                id
+                blob
+              }
+              resourcePayload {
+                id
+                blob
+              }
+            }
+            tag
+          }
+        }
       }
-      }
+      blockNumber
+    }
+    }
     """
   end
 
@@ -109,22 +145,32 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
               case Req.post(endpoint,
                      json: %{
                        query: transactionExecutedQuery(),
-                       variables: %{
-                         "min" => current_blockheight,
-                         "max" => next_blockheight
-                       }
+                       variables: %{"min" => current_blockheight}
                      }
                    ) do
                 {:ok, %{status: 200, body: body}} ->
-                  for event <- body["data"]["raw_events"] do
-                    if event["event_name"] == "TransactionExecuted" do
-                      # TODO Attempt decode and store for each cipher key
-                      write_transaction_resource(
-                        event["params"]["tag"],
-                        event["params"]["discoveryPayload"],
-                        event["params"]["resourcePayload"]
-                      )
-                    end
+                  for event <-
+                        body["data"][
+                          "ProtocolAdapter_TransactionExecuted"
+                        ],
+                      action <- event["transaction"]["actions"],
+                      logicVerifierInput <-
+                        action["logicVerifierInputs"],
+                      discoveryPayload <-
+                        logicVerifierInput["appData"][
+                          "discoveryPayload"
+                        ] do
+                    appData = logicVerifierInput["appData"]
+
+                    IO.puts(logicVerifierInput["tag"])
+
+                    # require IEx; IEx.pry;
+                    # TODO Attempt decode and store for each cipher key
+                    write_transaction_resource(
+                      logicVerifierInput["tag"],
+                      discoveryPayload["blob"],
+                      appData["resourcePayload"]
+                    )
                   end
 
                 other ->
@@ -136,13 +182,11 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
 
             false ->
               IO.puts("No New")
-
               current_blockheight
           end
 
         other ->
           IO.puts(other)
-
           current_blockheight
       end
 
@@ -157,11 +201,7 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
   @impl true
   def handle_info(
         {:new_cipher_key, new_cipher_key},
-        %{
-          endpoint: endpoint,
-          cipher_keys: cipher_keys,
-          blockheight: current_blockheight
-        } = state
+        %{endpoint: endpoint, cipher_keys: cipher_keys} = state
       ) do
     IO.puts("Adding cipher key...")
 
@@ -169,17 +209,23 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
            json: %{query: transactionExecutedFullQuery()}
          ) do
       {:ok, %{status: 200, body: body}} ->
-        for event <- body["data"]["raw_events"] do
-          if event["event_name"] == "TransactionExecuted" do
-            # TODO Attempt decode and store for new cipher key only
-            write_transaction_resource(
-              event["params"]["tag"],
-              event["params"]["discoveryPayload"],
-              event["params"]["resourcePayload"]
-            )
+        for event <-
+              body["data"]["ProtocolAdapter_TransactionExecuted"],
+            action <- event["transaction"]["actions"],
+            logicVerifierInput <- action["logicVerifierInputs"],
+            discoveryPayload <-
+              logicVerifierInput["appData"]["discoveryPayload"] do
+          appData = logicVerifierInput["appData"]
 
-            IO.puts(event["params"]["tag"])
-          end
+          IO.puts(logicVerifierInput["tag"])
+
+          # require IEx; IEx.pry;
+          # TODO Attempt decode and store for each cipher key
+          write_transaction_resource(
+            logicVerifierInput["tag"],
+            discoveryPayload["blob"],
+            appData["resourcePayload"]
+          )
         end
 
       other ->
@@ -192,7 +238,7 @@ defmodule Anoma.LocalDomain.System.GraphQLPoller.Poller do
   def start do
     DynamicSupervisor.start_child(
       AppTasksSupervisor,
-      {Anoma.LocalDomain.System.GraphQLPoller.Poller,
+      {Anoma.LocalDomain.System.Poller,
        [cipher_keys: [], endpoint: "http://localhost:8080/v1/graphql"]}
     )
   end
