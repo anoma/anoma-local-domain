@@ -96,18 +96,22 @@ defmodule Anoma.LocalDomain.System.Poller do
   def blockHeightQuery() do
     """
     query {
-    raw_events(limit: 1, order_by: {block_number: desc}) {
-    block_number
+    ProtocolAdapter_TransactionExecuted(limit: 1, order_by: {blockNumber: desc}) {
+    blockNumber
     }
     }
     """
   end
 
-  def write_transaction_resource(tag, owner, resource) do
+  def write_transaction_resource(tag, discovery, owner, resource) do
     Anoma.LocalDomain.Storage.write_local(
-      ~k"/resource/!tag",
+      ~k"/resource/!tag/!discovery",
       {:owner, owner, :resource, resource}
     )
+  end
+
+  def read_transaction_resource(tag, discovery) do
+    Anoma.LocalDomain.Storage.read_latest(~k"/resource/!tag/!discovery")
   end
 
   def read_blockheight() do
@@ -138,9 +142,13 @@ defmodule Anoma.LocalDomain.System.Poller do
       case Req.post(endpoint, json: %{query: blockHeightQuery()}) do
         {:ok, %{status: 200, body: body}} ->
           next_blockheight =
-            Enum.at(body["data"]["raw_events"], 0)["block_number"]
+            Enum.at(
+              body["data"]["ProtocolAdapter_TransactionExecuted"],
+              0
+            )["blockNumber"]
 
-          case current_blockheight < next_blockheight do
+          case current_blockheight < next_blockheight and
+                 next_blockheight != nil do
             true ->
               case Req.post(endpoint,
                      json: %{
@@ -163,14 +171,21 @@ defmodule Anoma.LocalDomain.System.Poller do
                     appData = logicVerifierInput["appData"]
 
                     IO.puts(logicVerifierInput["tag"])
+                    IO.puts(discoveryPayload["blob"])
 
-                    # require IEx; IEx.pry;
                     # TODO Attempt decode and store for each cipher key
-                    write_transaction_resource(
-                      logicVerifierInput["tag"],
-                      discoveryPayload["blob"],
-                      appData["resourcePayload"]
-                    )
+
+                    for key <- state[:cipher_keys] do
+                      IO.puts(key)
+                      owner = "blah"
+
+                      write_transaction_resource(
+                        logicVerifierInput["tag"],
+                        discoveryPayload["blob"],
+                        owner,
+                        appData["resourcePayload"]
+                      )
+                    end
                   end
 
                 other ->
@@ -204,6 +219,8 @@ defmodule Anoma.LocalDomain.System.Poller do
         %{endpoint: endpoint, cipher_keys: cipher_keys} = state
       ) do
     IO.puts("Adding cipher key...")
+    # Use deterministic ID for event handling separate events
+    # GenServer.cast(Anoma.LocalDomain.System.Vault, {:new_cipher_key, new_cipher_key,})
 
     case Req.post(endpoint,
            json: %{query: transactionExecutedFullQuery()}
@@ -218,12 +235,15 @@ defmodule Anoma.LocalDomain.System.Poller do
           appData = logicVerifierInput["appData"]
 
           IO.puts(logicVerifierInput["tag"])
+          IO.puts(discoveryPayload)
 
-          # require IEx; IEx.pry;
           # TODO Attempt decode and store for each cipher key
+          owner = "blah"
+
           write_transaction_resource(
             logicVerifierInput["tag"],
             discoveryPayload["blob"],
+            owner,
             appData["resourcePayload"]
           )
         end
@@ -239,7 +259,10 @@ defmodule Anoma.LocalDomain.System.Poller do
     DynamicSupervisor.start_child(
       AppTasksSupervisor,
       {Anoma.LocalDomain.System.Poller,
-       [cipher_keys: [], endpoint: "http://localhost:8080/v1/graphql"]}
+       [
+         cipher_keys: ["a"],
+         endpoint: "http://localhost:8080/v1/graphql"
+       ]}
     )
   end
 end

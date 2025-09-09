@@ -14,17 +14,18 @@ defmodule IndexerWeb.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      # extra_applications: [:logger],
-      # mod: {IndexerWeb.Application, []}
+      extra_applications: [:logger, :anoma_local_domain],
+      included_applications: [],
+      mod: {IndexerWeb.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-    {:plug_cowboy, "~> 2.7"},
-    {:jason, "~> 1.4"},
-    {:cors_plug, "~> 3.0"},
-    {:anoma_local_domain, path: "../anoma-local-domain/"}    ]
+      {:plug_cowboy, "~> 2.7"},
+      {:jason, "~> 1.4"},
+      {:cors_plug, "~> 3.0"},
+      {:anoma_local_domain, path: ".."}    ]
   end
 end
