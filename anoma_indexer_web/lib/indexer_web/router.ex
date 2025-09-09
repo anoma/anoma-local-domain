@@ -1,6 +1,6 @@
 defmodule IndexerWeb.Router do
   use Plug.Router
-  alias Anoma.LocalDomain.System.GraphQLPoller, as: Poller
+  alias Anoma.LocalDomain.System.Poller, as: Poller
 
   plug Plug.Logger
   plug CORSPlug
@@ -10,6 +10,19 @@ defmodule IndexerWeb.Router do
 
   defp ok(conn, data \\ %{}, status \\ 200),
     do: Plug.Conn.send_resp(conn, status, Jason.encode!(data))
+
+  get "/add_key/:key" do
+    send_resp(conn, 200, "TODO")
+  end
+
+  get "/all_tags/:key" do
+    IO.puts(Anoma.LocalDomain.Storage.ls("/resource"))
+    send_resp(conn, 200, "TODO")
+  end
+
+  get "/resource/:tag/:key" do
+    send_resp(conn, 200, "TODO")
+  end
 
     match _ do
     Plug.Conn.send_resp(conn, 404, Jason.encode!(%{error: "not_found"}))
