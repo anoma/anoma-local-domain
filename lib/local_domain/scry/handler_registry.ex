@@ -31,26 +31,30 @@ defmodule Anoma.LocalDomain.Scry.HandlerRegistry do
   use Anoma.LocalDomain
   use GenServer
 
-  def start_link(arg) do
-    GenServer.start_link(__MODULE__, arg, name: __MODULE__)
+  def start_link(args) do
+    # name = Anoma.LocalDomain.Registry.via(args[:node_id], __MODULE__)
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
   def match(prev_prefixes, key) do
+    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
     GenServer.call(__MODULE__, {:match, prev_prefixes, key})
   end
 
   def register(prefix, fun) do
+    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
     GenServer.cast(__MODULE__, {:register, prefix, fun})
   end
 
   def deregister(prefix) do
+    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
     GenServer.cast(__MODULE__, {:deregister, prefix})
   end
 
   # callbacks
 
   @impl true
-  def init(_arg) do
+  def init(_args) do
     # todo: more searchable backend
     map = %{
       {[], ~k"/anoma/local"} => &Anoma.LocalDomain.Scry.scry_local/2,

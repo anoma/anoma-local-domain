@@ -1,4 +1,4 @@
-defmodule Examples.EFactory do
+defmodule LocalDomain.Examples.EFactory do
   @moduledoc """
   I provide the examples for Anoma.LocalDomain.Factory
   """

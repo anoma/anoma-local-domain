@@ -35,7 +35,7 @@ defmodule Anoma.LocalDomain.Scry do
 
   def scry_local(prev_prefixes = [~k"/anoma/local"], key) do
     # todo: local ids, time
-    [_local_id, _time | subkey] = key
+    [local_id, _time | subkey] = key
     # use the subkey's handler, if any
     with {:ok, result} <- scry_inner(prev_prefixes, subkey) do
       {:ok, result}
@@ -44,7 +44,7 @@ defmodule Anoma.LocalDomain.Scry do
         :absent
 
       {:error, :no_handler} ->
-        Storage.read_local(subkey)
+        Storage.read_local(local_id, subkey)
 
       {:error, e} ->
         {:error, e}
