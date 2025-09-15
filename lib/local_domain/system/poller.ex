@@ -3,31 +3,8 @@ defmodule Anoma.LocalDomain.System.Poller do
   I poll for events from a graphQL endpoint for a protocol adapter contract indexer.
   """
 
-  use GenServer
+  use GenStateMachine
   use Anoma.LocalDomain
-
-  def start_link(opts),
-    do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-
-  @impl true
-  def init(opts) do
-    cipher_keys = opts[:cipher_keys]
-    endpoint = opts[:endpoint]
-
-    state = %{
-      cipher_keys: cipher_keys,
-      endpoint: endpoint,
-      blockheight:
-        case read_blockheight() do
-          {:ok, blockheight} -> blockheight
-          :absent -> 0
-        end
-    }
-
-    Process.send_after(self(), :tick, 0)
-
-    {:ok, state}
-  end
 
   def transactionExecutedQuery() do
     """
@@ -103,15 +80,15 @@ defmodule Anoma.LocalDomain.System.Poller do
     """
   end
 
-  def write_transaction_resource(tag, discovery, owner, resource) do
+  def write_transaction_resource(tag, discovery, resource) do
     Anoma.LocalDomain.Storage.write_local(
-      ~k"/resource/!tag/!discovery",
-      {:owner, owner, :resource, resource}
+      ~k"/resource/!tag",
+      {:discovery, discovery, :resource, resource}
     )
   end
 
-  def read_transaction_resource(tag, discovery) do
-    Anoma.LocalDomain.Storage.read_latest(~k"/resource/!tag/!discovery")
+  def read_transaction_resource(tag) do
+    Anoma.LocalDomain.Storage.read_latest(~k"/resource/!tag")
   end
 
   def read_blockheight() do
@@ -125,18 +102,45 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  def can_decrypt(_cipher_key, resource) do
+    {:ok, _resource} = Anoma.LocalDomain.Storage.read_latest(resource)
+    true
+  end
+
+  def start_link(opts),
+    do: GenStateMachine.start_link(__MODULE__, opts, name: __MODULE__)
+
   @impl true
-  def handle_info(
+  def init(opts) do
+    cipher_keys = opts[:cipher_keys]
+    endpoint = opts[:endpoint]
+
+    data = %{
+      cipher_keys: cipher_keys,
+      endpoint: endpoint,
+      blockheight:
+        case read_blockheight() do
+          {:ok, blockheight} -> blockheight
+          :absent -> 0
+        end
+    }
+
+    {:ok, :polling, data, {:state_timeout, 0, :tick}}
+  end
+
+  @impl true
+  def handle_event(
+        :state_timeout,
         :tick,
+        _state,
         %{
           cipher_keys: cipher_keys,
           endpoint: endpoint,
           blockheight: current_blockheight
-        } = state
+        } = data
       ) do
-    IO.puts("Polling now...")
+    IO.puts("POLLING")
     IO.puts(cipher_keys)
-    IO.puts(endpoint)
 
     next_blockheight =
       case Req.post(endpoint, json: %{query: blockHeightQuery()}) do
@@ -163,33 +167,33 @@ defmodule Anoma.LocalDomain.System.Poller do
                         ],
                       action <- event["transaction"]["actions"],
                       logicVerifierInput <-
-                        action["logicVerifierInputs"],
-                      discoveryPayload <-
-                        logicVerifierInput["appData"][
-                          "discoveryPayload"
-                        ] do
+                        action["logicVerifierInputs"] do
                     appData = logicVerifierInput["appData"]
 
+                    write_transaction_resource(
+                      logicVerifierInput["tag"],
+                      appData["discoveryPayload"],
+                      appData["resourcePayload"]
+                    )
+
                     IO.puts(logicVerifierInput["tag"])
-                    IO.puts(discoveryPayload["blob"])
+
+                    # for key <- cipher_keys do
+                    #   IO.puts(key)
 
                     # TODO Attempt decode and store for each cipher key
 
-                    for key <- state[:cipher_keys] do
-                      IO.puts(key)
-                      owner = "blah"
-
-                      write_transaction_resource(
-                        logicVerifierInput["tag"],
-                        discoveryPayload["blob"],
-                        owner,
-                        appData["resourcePayload"]
-                      )
-                    end
+                    #   write_transaction_resource(
+                    #     logicVerifierInput["tag"],
+                    #     discoveryPayload["blob"],
+                    #     owner,
+                    #     appData["resourcePayload"]
+                    #   )
+                    # end
                   end
 
                 other ->
-                  IO.puts(other)
+                  IO.puts("FAILED TO QUERY EVENTS")
               end
 
               write_blockheight(next_blockheight)
@@ -201,58 +205,35 @@ defmodule Anoma.LocalDomain.System.Poller do
           end
 
         other ->
-          IO.puts(other)
+          IO.puts("FAILED BLOCKHEIGHT QUERY")
           current_blockheight
       end
 
-    IO.puts(next_blockheight)
-
-    # every 12s
-    Process.send_after(self(), :tick, 12000)
-
-    {:noreply, %{state | blockheight: next_blockheight}}
+    {:keep_state, %{data | blockheight: next_blockheight},
+     {:state_timeout, 12_000, :tick}}
   end
 
   @impl true
-  def handle_info(
-        {:new_cipher_key, new_cipher_key},
-        %{endpoint: endpoint, cipher_keys: cipher_keys} = state
+  def handle_event(
+        :cast,
+        {:add_key, key},
+        :polling,
+        %{cipher_keys: cipher_keys} = data
       ) do
     IO.puts("Adding cipher key...")
-    # Use deterministic ID for event handling separate events
-    # GenServer.cast(Anoma.LocalDomain.System.Vault, {:new_cipher_key, new_cipher_key,})
 
-    case Req.post(endpoint,
-           json: %{query: transactionExecutedFullQuery()}
-         ) do
-      {:ok, %{status: 200, body: body}} ->
-        for event <-
-              body["data"]["ProtocolAdapter_TransactionExecuted"],
-            action <- event["transaction"]["actions"],
-            logicVerifierInput <- action["logicVerifierInputs"],
-            discoveryPayload <-
-              logicVerifierInput["appData"]["discoveryPayload"] do
-          appData = logicVerifierInput["appData"]
+    {:next_state, :paused, %{data | cipher_keys: cipher_keys ++ [key]},
+     {:next_event, :internal, {:reindex, key}}}
+  end
 
-          IO.puts(logicVerifierInput["tag"])
-          IO.puts(discoveryPayload)
+  @impl true
+  def handle_event(:internal, {:reindex, key}, :paused, data) do
+    {:ok, resources} = Anoma.LocalDomain.Storage.ls(["resource"])
 
-          # TODO Attempt decode and store for each cipher key
-          owner = "blah"
+    Enum.filter(resources, fn resource -> can_decrypt(key, resource) end)
+    |> Enum.map(fn _ -> IO.puts("OK") end)
 
-          write_transaction_resource(
-            logicVerifierInput["tag"],
-            discoveryPayload["blob"],
-            owner,
-            appData["resourcePayload"]
-          )
-        end
-
-      other ->
-        IO.puts(other)
-    end
-
-    %{state | cipher_keys: cipher_keys ++ [new_cipher_key]}
+    {:next_state, :polling, data, {:state_timeout, 0, :tick}}
   end
 
   def start do
@@ -260,9 +241,15 @@ defmodule Anoma.LocalDomain.System.Poller do
       AppTasksSupervisor,
       {Anoma.LocalDomain.System.Poller,
        [
-         cipher_keys: ["a"],
+         cipher_keys: [
+           "c5de8df2dff5964d9ff981282fea2b5e3bbee6801039f25a426b73d239f8694a"
+         ],
          endpoint: "http://localhost:8080/v1/graphql"
        ]}
     )
+  end
+
+  def add_cipher_key(cipher_key) do
+    GenStateMachine.cast(__MODULE__, {:add_key, cipher_key})
   end
 end
