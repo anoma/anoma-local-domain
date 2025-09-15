@@ -153,18 +153,16 @@ defmodule Anoma.LocalDomain.Storage do
     end
   end
 
-  def handle_call({:read_latest_where, key, k, v}, _from, state) do
-    # prefix the key
-    local_id = Atom.to_string(__MODULE__)
-    full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
+  # def handle_call({:read_latest_where, key, _k, _v}, _from, state) do
+  #   # prefix the key
+  #   local_id = Atom.to_string(__MODULE__)
+  #   full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
 
-    case :ets.select(state.table, [
-           {{full_key, :"$3"}, [], [key ++ [:"$2"], "$3"]}
-         ]) do
-      [] -> {:reply, :absent, state}
-      value -> {:reply, {:ok, MapSet.new(value)}, state}
-    end
-  end
+  #   case :ets.select(state.table, [{{full_key, :"$3"}, [], [key ++ [:"$2"], "$3"]}]) do
+  #     [] -> {:reply, :absent, state}
+  #     value -> {:reply, {:ok, MapSet.new(value)}, state}
+  #   end
+  # end
 
   @impl true
   def handle_call({:read_and_block, _full_key}, _from, state) do
@@ -178,7 +176,7 @@ defmodule Anoma.LocalDomain.Storage do
     local_id = Atom.to_string(__MODULE__)
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
-    IO.puts(key)
+    # IO.puts(key)
 
     :ets.insert(state.table, {key, value})
 
