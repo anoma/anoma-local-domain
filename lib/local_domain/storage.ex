@@ -114,7 +114,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_call({:read_local, key}, _from, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
@@ -135,7 +135,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:write, key, value}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
@@ -147,7 +147,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:delete, key}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 

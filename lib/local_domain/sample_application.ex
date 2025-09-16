@@ -22,12 +22,14 @@ defmodule Anoma.LocalDomain.SampleApplication do
 
   def privkey(node_id, name) do
     Anoma.LocalDomain.Scry.scry(
+      node_id,
       ~k"/anoma/local/!node_id/bar/sample/privkey/!name"
     )
   end
 
   def pubkey(node_id, name) do
     Anoma.LocalDomain.Scry.scry(
+      node_id,
       ~k"/anoma/local/!node_id/bar/sample/pubkey/!name"
     )
   end
@@ -35,9 +37,10 @@ defmodule Anoma.LocalDomain.SampleApplication do
   # Callbacks
 
   defscry do
-    _prev_prefixes, ~k"!node_id/pubkey/!name" ->
+    node_id, _prev_prefixes, ~k"!node_id/pubkey/!name" ->
       with {:ok, privkey} <-
              Anoma.LocalDomain.Scry.scry(
+               node_id,
                ~k"/anoma/local/!node_id/bar/sample/privkey/!name"
              ) do
         {:ok, "PUBLIC_" <> privkey}

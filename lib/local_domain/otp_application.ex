@@ -12,7 +12,6 @@ defmodule Anoma.LocalDomain.OTPApplication do
   @impl true
   def start(_, _args) do
     children = [
-      Anoma.LocalDomain.Scry.HandlerRegistry,
       {Elixir.Registry,
        keys: :unique, name: Anoma.LocalDomain.Registry},
       {DynamicSupervisor, name: Anoma.LocalDomain.NodePool}
