@@ -25,7 +25,7 @@ defmodule Anoma.LocalDomain.NodeSupervisor do
     node_id = args[:node_id]
 
     children = [
-      # {Anoma.LocalDomain.Scry.HandlerRegistry, node_id: node_id},
+      {Anoma.LocalDomain.Scry.HandlerRegistry, node_id: node_id},
       {Anoma.LocalDomain.Storage, node_id: node_id},
       %{
         id: Anoma.LocalDomain.ApplicationStartup,

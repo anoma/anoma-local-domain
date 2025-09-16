@@ -14,7 +14,7 @@ defmodule Anoma.LocalDomain.Scry.HandlerRegistry do
   {[], /anoma/local} -> Scry.scry_local
   {[], /anoma/controller]} -> Scry.scry_controller
 
-  Scry.scry_local({[], /anoma/local})
+  Scry.scry_local("", {[], /anoma/local})
   App1.scry_app1({[/app-1], key})
 
   This should go to the /anoma/local handler first. However, this wants to
@@ -32,53 +32,60 @@ defmodule Anoma.LocalDomain.Scry.HandlerRegistry do
   use GenServer
 
   def start_link(args) do
-    # name = Anoma.LocalDomain.Registry.via(args[:node_id], __MODULE__)
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    name = Anoma.LocalDomain.Registry.via(args[:node_id], __MODULE__)
+    GenServer.start_link(__MODULE__, args, name: name)
   end
 
-  def match(prev_prefixes, key) do
-    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
-    GenServer.call(__MODULE__, {:match, prev_prefixes, key})
+  def match(node_id, prev_prefixes, key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:match, prev_prefixes, key})
   end
 
-  def register(prefix, fun) do
-    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
-    GenServer.cast(__MODULE__, {:register, prefix, fun})
+  def register(node_id, prefix, fun) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:register, prefix, fun})
   end
 
-  def deregister(prefix) do
-    # name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
-    GenServer.cast(__MODULE__, {:deregister, prefix})
+  def deregister(node_id, prefix) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:deregister, prefix})
   end
 
   # callbacks
 
   @impl true
-  def init(_args) do
+  def init(args) do
     # todo: more searchable backend
     map = %{
-      {[], ~k"/anoma/local"} => &Anoma.LocalDomain.Scry.scry_local/2,
-      {[], ~k"/anoma/controller"} =>
-        &Anoma.LocalDomain.Scry.scry_controller/2
+      node_id: args[:node_id],
+      map: %{
+        {[], ~k"/anoma/local"} => &Anoma.LocalDomain.Scry.scry_local/3,
+        {[], ~k"/anoma/controller"} =>
+          &Anoma.LocalDomain.Scry.scry_controller/3
+      }
     }
 
     {:ok, map}
   end
 
   @impl true
-  def handle_cast({:register, prefix, fun}, state) do
-    {:noreply, Map.put(state, prefix, fun)}
+  def handle_cast({:register, prefix, fun}, %{map: map} = state) do
+    {:noreply, %{state | map: Map.put(map, prefix, fun)}}
   end
 
   @impl true
-  def handle_cast({:deregister, prefix}, state) do
-    {:noreply, Map.delete(state, prefix)}
+  def handle_cast({:deregister, prefix}, %{map: map} = state) do
+    {:noreply, %{state | map: Map.delete(map, prefix)}}
   end
 
   @impl true
-  def handle_call({:match, prev_prefixes, key}, _from, state) do
+  def handle_call(
+        {:match, prev_prefixes, key},
+        _from,
+        %{map: map} = state
+      ) do
     matches =
-      state
+      map
       |> Map.filter(fn {{k_prev_prefixes, _}, _} ->
         k_prev_prefixes == prev_prefixes
       end)

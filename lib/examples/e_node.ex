@@ -2,11 +2,15 @@ defmodule Examples.ENode do
   require ExUnit.Assertions
   import ExUnit.Assertions
 
-  @spec start_node() :: pid() | {:error, :failed_to_start_node}
+  @spec start_node() ::
+          {:ok, String.t(), pid()} | {:error, :failed_to_start_node}
   def start_node() do
-    assert {:ok, pid} = Anoma.LocalDomain.OTPApplication.start_node()
+    node_id = Base.encode16(:crypto.strong_rand_bytes(32))
 
-    pid
+    assert {:ok, pid} =
+             Anoma.LocalDomain.OTPApplication.start_node(node_id)
+
+    {:ok, node_id, pid}
   end
 
   @spec stop_node(pid()) :: :ok
@@ -15,7 +19,7 @@ defmodule Examples.ENode do
     :ok
   end
 
-  @spec extra_node_fails() :: :ok | {:error, :failed_to_start_node}
+  @spec extra_node_fails() :: pid() | {:error, :failed_to_start_node}
   def extra_node_fails() do
     assert {:ok, pid1} =
              Anoma.LocalDomain.OTPApplication.start_node("id1")
@@ -24,7 +28,7 @@ defmodule Examples.ENode do
              Anoma.LocalDomain.OTPApplication.start_node("id1")
 
     assert pid1 == pid2
-    :ok
+    pid1
   end
 
   @spec start_two_different_nodes() ::

@@ -76,15 +76,17 @@ defmodule Anoma.LocalDomain.Storage do
   @doc """
   Reads latest from /anoma/local/[local id]/.
   """
-  def read_latest(key) when is_list(key) do
-    GenServer.call(__MODULE__, {:read_latest, key})
+  def read_latest(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:read_latest, key})
   end
 
   @doc """
   I retrieve all keys that are prefixed by key.
   """
-  def ls(key) when is_list(key) do
-    GenServer.call(__MODULE__, {:ls, key})
+  def ls(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:ls, key})
   end
 
   @doc """
@@ -128,7 +130,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_call({:read_local, key}, _from, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
@@ -143,7 +145,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_call({:ls, key}, _from, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
 
     case :ets.select(state.table, [
@@ -156,7 +158,7 @@ defmodule Anoma.LocalDomain.Storage do
 
   @impl true
   def handle_call({:read_latest, key}, _from, state) do
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key
 
     case :ets.select(state.table, [{{key, :"$2"}, [], [:"$$"]}]) do
@@ -182,7 +184,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:write, key, value}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
@@ -194,7 +196,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:delete, key}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
