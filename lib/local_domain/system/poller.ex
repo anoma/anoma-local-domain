@@ -192,7 +192,7 @@ defmodule Anoma.LocalDomain.System.Poller do
                     # end
                   end
 
-                other ->
+                _other ->
                   IO.puts("FAILED TO QUERY EVENTS")
               end
 
@@ -204,7 +204,7 @@ defmodule Anoma.LocalDomain.System.Poller do
               current_blockheight
           end
 
-        other ->
+        _other ->
           IO.puts("FAILED BLOCKHEIGHT QUERY")
           current_blockheight
       end
