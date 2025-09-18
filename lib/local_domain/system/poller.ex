@@ -8,7 +8,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   def start do
     args = [
-      cipher_keys: [%{private_key: "s", public_key: "p"}],
+      cipher_keypairs: [],
       endpoint: "http://localhost:8080/v1/graphql"
     ]
 
@@ -24,8 +24,8 @@ defmodule Anoma.LocalDomain.System.Poller do
     DynamicSupervisor.terminate_child(AppTasksSupervisor, pid)
   end
 
-  def add_cipher_key(cipher_key) do
-    GenStateMachine.cast(__MODULE__, {:add_key, cipher_key})
+  def add_cipher_keypair(cipher_keypair) do
+    GenStateMachine.cast(__MODULE__, {:add_keypair, cipher_keypair})
   end
 
   def transactionExecutedQuery() do
@@ -58,10 +58,10 @@ defmodule Anoma.LocalDomain.System.Poller do
   end
 
   def write_transaction_resource(tag, discovery, resource) do
-    Anoma.LocalDomain.Storage.write_local(
-      ~k"/resource/!tag",
-      {:discovery, discovery, :resource, resource}
-    )
+    Anoma.LocalDomain.Storage.write_local(~k"/resource/!tag", %{
+      discovery: discovery,
+      resource: resource
+    })
   end
 
   def read_transaction_resource(tag) do
@@ -79,9 +79,39 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
-  def can_decrypt(_cipher_key, resource) do
-    {:ok, _resource} = Anoma.LocalDomain.Storage.read_latest(resource)
-    true
+  def can_decrypt(
+        %{secret_key: secret_key_hex, public_key: public_key_hex},
+        discovery_payload_hex
+      ) do
+    with {:ok, secret_key_bytes} <-
+           Base.decode16(secret_key_hex, case: :lower),
+         {:ok, public_key_bytes} <-
+           Base.decode16(public_key_hex, case: :lower),
+         {:ok, payload_bytes} <-
+           Base.decode16(discovery_payload_hex, case: :lower) do
+      # The prefix format is [33, 0, 0, 0, 0, 0, 0, 0] where 33 is the compressed public key length
+      public_key_with_prefix =
+        <<33, 0, 0, 0, 0, 0, 0, 0>> <> public_key_bytes
+
+      payload_list = :binary.bin_to_list(payload_bytes)
+
+      keypair =
+        Anoma.Arm.Keypair.from_map(%{
+          secret_key: Base.encode64(secret_key_bytes),
+          public_key: Base.encode64(public_key_with_prefix)
+        })
+
+      case Anoma.Arm.decrypt_cipher(payload_list, keypair) do
+        {:ok, decrypted} -> {:ok, decrypted}
+        decrypted when is_list(decrypted) -> {:ok, decrypted}
+        nil -> {:error, "nil"}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, reason} -> {:error, reason}
+      :error -> {:error, :bad_hex}
+      other -> {:error, {:unexpected, other}}
+    end
   end
 
   def start_link(opts),
@@ -89,11 +119,11 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   @impl true
   def init(opts) do
-    cipher_keys = opts[:cipher_keys]
+    cipher_keypairs = opts[:cipher_keypairs]
     endpoint = opts[:endpoint]
 
     data = %{
-      cipher_keys: cipher_keys,
+      cipher_keypairs: cipher_keypairs,
       endpoint: endpoint,
       blockheight:
         case read_blockheight() do
@@ -111,14 +141,14 @@ defmodule Anoma.LocalDomain.System.Poller do
         :tick,
         _state,
         %{
-          cipher_keys: _cipher_keys,
+          cipher_keypairs: cipher_keypairs,
           endpoint: endpoint,
           blockheight: current_blockheight
         } = data
       ) do
     IO.puts("POLLING")
     IO.puts("Current Blockheight #{current_blockheight}")
-    # IO.puts(cipher_keys)
+    IO.puts("Current Keypairs #{inspect(cipher_keypairs)}")
 
     {next_blockheight, tags} =
       case Req.post(endpoint,
@@ -143,8 +173,8 @@ defmodule Anoma.LocalDomain.System.Poller do
             {current_blockheight, []}
           end
 
-        _other ->
-          IO.puts("TransactionExecuted query failed")
+        {:error, reason} ->
+          IO.puts("Query failed #{inspect(reason)}")
       end
 
     case Req.post(endpoint,
@@ -173,11 +203,21 @@ defmodule Anoma.LocalDomain.System.Poller do
           )
 
           # Attempt decryption + store per cipher key
+          for keypair <- cipher_keypairs do
+            "0x" <> blob = discovery_payload["blob"]
+
+            case can_decrypt(keypair, blob) do
+              {:ok, _} -> IO.puts("OK")
+              {:error, reason} -> IO.puts("NOT OK #{inspect(reason)}")
+            end
+          end
         end
 
       _other ->
         IO.puts("Payload query failed")
     end
+
+    write_blockheight(next_blockheight)
 
     {:keep_state, %{data | blockheight: next_blockheight},
      {:state_timeout, 12_000, :tick}}
@@ -186,22 +226,33 @@ defmodule Anoma.LocalDomain.System.Poller do
   @impl true
   def handle_event(
         :cast,
-        {:add_key, key},
+        {:add_keypair, keypair},
         :polling,
-        %{cipher_keys: cipher_keys} = data
+        %{cipher_keypairs: cipher_keypairs} = data
       ) do
-    IO.puts("Adding cipher key...")
+    IO.puts("Adding cipher keypair #{inspect(keypair)}")
 
-    {:next_state, :paused, %{data | cipher_keys: cipher_keys ++ [key]},
-     {:next_event, :internal, {:reindex, key}}}
+    {:next_state, :paused,
+     %{data | cipher_keypairs: cipher_keypairs ++ [keypair]},
+     {:next_event, :internal, {:reindex, keypair}}}
   end
 
   @impl true
-  def handle_event(:internal, {:reindex, key}, :paused, data) do
+  def handle_event(:internal, {:reindex, keypair}, :paused, data) do
     {:ok, resources} = Anoma.LocalDomain.Storage.ls(["resource"])
 
-    Enum.filter(resources, fn resource -> can_decrypt(key, resource) end)
-    |> Enum.map(fn _ -> IO.puts("OK") end)
+    for resource <- resources do
+      {:ok, resource} = Anoma.LocalDomain.Storage.read_latest(resource)
+
+      "0x" <> blob = resource[:discovery]["blob"]
+
+      IO.puts("Blob #{blob}")
+
+      case can_decrypt(keypair, blob) do
+        {:ok, _} -> IO.puts("OK")
+        {:error, reason} -> IO.puts("NOT OK #{inspect(reason)}")
+      end
+    end
 
     {:next_state, :polling, data, {:state_timeout, 0, :tick}}
   end
