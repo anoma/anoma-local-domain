@@ -129,7 +129,7 @@ defmodule Anoma.LocalDomain.Storage do
     case :ets.select(state.table, [
            {{full_key, :"$3"}, [], [key ++ [:"$2"]]}
          ]) do
-      [] -> {:reply, :absent, state}
+      [] -> {:reply, {:ok, MapSet.new()}, state}
       value -> {:reply, {:ok, MapSet.new(value)}, state}
     end
   end

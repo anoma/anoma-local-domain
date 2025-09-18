@@ -150,6 +150,7 @@ defmodule Anoma.LocalDomain.System.Poller do
     IO.puts("Current Blockheight #{current_blockheight}")
     IO.puts("Current Keypairs #{inspect(cipher_keypairs)}")
 
+    ## TODO optimise the graphQL so we don't have to do two queries
     {next_blockheight, tags} =
       case Req.post(endpoint,
              json: %{
@@ -175,6 +176,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
         {:error, reason} ->
           IO.puts("Query failed #{inspect(reason)}")
+          {current_blockheight, []}
       end
 
     case Req.post(endpoint,
@@ -213,8 +215,8 @@ defmodule Anoma.LocalDomain.System.Poller do
           end
         end
 
-      _other ->
-        IO.puts("Payload query failed")
+      reason ->
+        IO.puts("Query failed #{inspect(reason)}")
     end
 
     write_blockheight(next_blockheight)
