@@ -6,75 +6,52 @@ defmodule Anoma.LocalDomain.System.Poller do
   use GenStateMachine
   use Anoma.LocalDomain
 
+  def start do
+    args = [
+      cipher_keys: [%{private_key: "s", public_key: "p"}],
+      endpoint: "http://localhost:8080/v1/graphql"
+    ]
+
+    spec =
+      Supervisor.child_spec({Anoma.LocalDomain.System.Poller, args},
+        restart: :temporary
+      )
+
+    DynamicSupervisor.start_child(AppTasksSupervisor, spec)
+  end
+
+  def stop(pid) do
+    DynamicSupervisor.terminate_child(AppTasksSupervisor, pid)
+  end
+
+  def add_cipher_key(cipher_key) do
+    GenStateMachine.cast(__MODULE__, {:add_key, cipher_key})
+  end
+
   def transactionExecutedQuery() do
     """
-    query($min: numeric!) {
+    query($min: Int!) {
     ProtocolAdapter_TransactionExecuted(order_by: {blockNumber: desc}, where: {blockNumber:   {_gt: $min}}) {
-      id
-      transaction {
-        id
-        deltaProof
-        actions {
-          id
-          logicVerifierInputs {
-            appData {
-              id
-              discoveryPayload {
-                id
-                blob
-              }
-              resourcePayload {
-                id
-                blob
-              }
-            }
-            tag
-          }
-        }
-      }
-      blockNumber
-    }
-    }
-    """
-  end
-
-  def transactionExecutedFullQuery() do
-    """
-    query {
-    ProtocolAdapter_TransactionExecuted(order_by: {blockNumber: desc}) {
-      id
-      transaction {
-        id
-        deltaProof
-        actions {
-          id
-          logicVerifierInputs {
-            appData {
-              id
-              discoveryPayload {
-                id
-                blob
-              }
-              resourcePayload {
-                id
-                blob
-              }
-            }
-            tag
-          }
-        }
-      }
-      blockNumber
-    }
-    }
-    """
-  end
-
-  def blockHeightQuery() do
-    """
-    query {
-    ProtocolAdapter_TransactionExecuted(limit: 1, order_by: {blockNumber: desc}) {
+    id
+    tags
     blockNumber
+    }
+    }
+    """
+  end
+
+  def payloadQuery() do
+    """
+    query($tags: [String!]!) {
+    ProtocolAdapter_DiscoveryPayload(where: {tag: {_in: $tags}}) {
+    id
+    blob
+    tag
+    }
+    ProtocolAdapter_ResourcePayload(where: {tag: {_in: $tags}}) {
+    id
+    blob
+    tag
     }
     }
     """
@@ -134,80 +111,73 @@ defmodule Anoma.LocalDomain.System.Poller do
         :tick,
         _state,
         %{
-          cipher_keys: cipher_keys,
+          cipher_keys: _cipher_keys,
           endpoint: endpoint,
           blockheight: current_blockheight
         } = data
       ) do
     IO.puts("POLLING")
-    IO.puts(cipher_keys)
+    IO.puts("Current Blockheight #{current_blockheight}")
+    # IO.puts(cipher_keys)
 
-    next_blockheight =
-      case Req.post(endpoint, json: %{query: blockHeightQuery()}) do
+    {next_blockheight, tags} =
+      case Req.post(endpoint,
+             json: %{
+               query: transactionExecutedQuery(),
+               variables: %{"min" => current_blockheight}
+             }
+           ) do
         {:ok, %{status: 200, body: body}} ->
-          next_blockheight =
-            Enum.at(
-              body["data"]["ProtocolAdapter_TransactionExecuted"],
-              0
-            )["blockNumber"]
+          transactions =
+            body["data"]["ProtocolAdapter_TransactionExecuted"]
 
-          case current_blockheight < next_blockheight and
-                 next_blockheight != nil do
-            true ->
-              case Req.post(endpoint,
-                     json: %{
-                       query: transactionExecutedQuery(),
-                       variables: %{"min" => current_blockheight}
-                     }
-                   ) do
-                {:ok, %{status: 200, body: body}} ->
-                  for event <-
-                        body["data"][
-                          "ProtocolAdapter_TransactionExecuted"
-                        ],
-                      action <- event["transaction"]["actions"],
-                      logicVerifierInput <-
-                        action["logicVerifierInputs"] do
-                    appData = logicVerifierInput["appData"]
+          if length(transactions) > 0 do
+            IO.puts("New blocks found")
 
-                    write_transaction_resource(
-                      logicVerifierInput["tag"],
-                      appData["discoveryPayload"],
-                      appData["resourcePayload"]
-                    )
-
-                    IO.puts(logicVerifierInput["tag"])
-
-                    # for key <- cipher_keys do
-                    #   IO.puts(key)
-
-                    # TODO Attempt decode and store for each cipher key
-
-                    #   write_transaction_resource(
-                    #     logicVerifierInput["tag"],
-                    #     discoveryPayload["blob"],
-                    #     owner,
-                    #     appData["resourcePayload"]
-                    #   )
-                    # end
-                  end
-
-                _other ->
-                  IO.puts("FAILED TO QUERY EVENTS")
-              end
-
-              write_blockheight(next_blockheight)
-              next_blockheight
-
-            false ->
-              IO.puts("No New")
-              current_blockheight
+            {Enum.at(transactions, 0)["blockNumber"],
+             transactions
+             |> Enum.map(fn t -> t["tags"] end)
+             |> Enum.concat()}
+          else
+            IO.puts("No new blocks")
+            {current_blockheight, []}
           end
 
         _other ->
-          IO.puts("FAILED BLOCKHEIGHT QUERY")
-          current_blockheight
+          IO.puts("TransactionExecuted query failed")
       end
+
+    case Req.post(endpoint,
+           json: %{query: payloadQuery(), variables: %{"tags" => tags}}
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        discovery_payloads =
+          body["data"]["ProtocolAdapter_DiscoveryPayload"]
+
+        resource_payloads =
+          body["data"]["ProtocolAdapter_ResourcePayload"]
+
+        for discovery_payload <- discovery_payloads,
+            resource_payload <-
+              Enum.filter(resource_payloads, fn p ->
+                p["tag"] == discovery_payload["tag"]
+              end) do
+          IO.puts(
+            "Found discovery payload for #{discovery_payload["tag"]}"
+          )
+
+          write_transaction_resource(
+            discovery_payload["tag"],
+            discovery_payload,
+            resource_payload
+          )
+
+          # Attempt decryption + store per cipher key
+        end
+
+      _other ->
+        IO.puts("Payload query failed")
+    end
 
     {:keep_state, %{data | blockheight: next_blockheight},
      {:state_timeout, 12_000, :tick}}
@@ -234,22 +204,5 @@ defmodule Anoma.LocalDomain.System.Poller do
     |> Enum.map(fn _ -> IO.puts("OK") end)
 
     {:next_state, :polling, data, {:state_timeout, 0, :tick}}
-  end
-
-  def start do
-    DynamicSupervisor.start_child(
-      AppTasksSupervisor,
-      {Anoma.LocalDomain.System.Poller,
-       [
-         cipher_keys: [
-           "c5de8df2dff5964d9ff981282fea2b5e3bbee6801039f25a426b73d239f8694a"
-         ],
-         endpoint: "http://localhost:8080/v1/graphql"
-       ]}
-    )
-  end
-
-  def add_cipher_key(cipher_key) do
-    GenStateMachine.cast(__MODULE__, {:add_key, cipher_key})
   end
 end
