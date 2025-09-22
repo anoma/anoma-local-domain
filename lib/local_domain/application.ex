@@ -32,7 +32,7 @@ defmodule Anoma.LocalDomain.Application do
 
       @anoma_application_name unquote(name)
 
-      def init() do
+      def init(args) do
         :ok =
           HandlerRegistry.register(
             {[~k"/anoma/local"], [@anoma_application_name]},
@@ -40,7 +40,7 @@ defmodule Anoma.LocalDomain.Application do
           )
       end
 
-      defoverridable init: 0
+      defoverridable init: 1
 
       def scry(_, _) do
         {:error, :no_handler}
@@ -50,14 +50,14 @@ defmodule Anoma.LocalDomain.Application do
     end
   end
 
-  @callback init() :: :ok | :error
+  @callback init(any()) :: :ok | :error
   @callback scry(list(list(String.t())), list(String.t())) ::
               {:ok, term()}
               | :absent
               | {:error, term()}
 
-  def register(module) do
-    :ok = apply(module, :init, [])
-    System.Clerk.register_application(module)
+  def register(module, args) do
+    :ok = apply(module, :init, [args])
+    System.Clerk.register_application(args[:node_id], module)
   end
 end

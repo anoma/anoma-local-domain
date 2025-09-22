@@ -1,5 +1,5 @@
 %{
-  "anoma": {:git, "https://github.com/anoma/anoma", "f65074ee35d8c4bb66fbd3af13ab915ccc18bc22", [tag: "v0.34.0"]},
+  "anoma": {:git, "https://github.com/anoma/anoma", "a959a450c927df2c38e22cfef7243ddf87d61731", [branch: "jam/norocks"]},
   "bandit": {:hex, :bandit, "1.7.0", "d1564f30553c97d3e25f9623144bb8df11f3787a26733f00b21699a128105c0c", [:mix], [{:hpax, "~> 1.0", [hex: :hpax, repo: "hexpm", optional: false]}, {:plug, "~> 1.18", [hex: :plug, repo: "hexpm", optional: false]}, {:telemetry, "~> 0.4 or ~> 1.0", [hex: :telemetry, repo: "hexpm", optional: false]}, {:thousand_island, "~> 1.0", [hex: :thousand_island, repo: "hexpm", optional: false]}, {:websock, "~> 0.5", [hex: :websock, repo: "hexpm", optional: false]}], "hexpm", "3e2f7a98c7a11f48d9d8c037f7177cd39778e74d55c7af06fe6227c742a8168a"},
   "bunt": {:hex, :bunt, "1.0.0", "081c2c665f086849e6d57900292b3a161727ab40431219529f13c4ddcf3e7a44", [:mix], [], "hexpm", "dc5f86aa08a5f6fa6b8096f0735c4e76d54ae5c9fa2c143e5a1fc7c1cd9bb6b5"},
   "cairo": {:git, "https://github.com/anoma/aarm-cairo", "a5a2778a4ad9b2ff40cea471ac777089149b9fda", [ref: "a5a2778a4ad9b2ff40cea471ac777089149b9fda"]},
