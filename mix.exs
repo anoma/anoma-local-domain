@@ -24,6 +24,7 @@ defmodule Anoma.LocalDomain.MixProject do
   defp deps do
     [
       # library dependencies here
+      {:req, "~> 0.5.0"},
       {:typed_struct, "~> 0.3.0"},
       # non-runtime dependencies here
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
