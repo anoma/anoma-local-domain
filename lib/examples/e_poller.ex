@@ -33,10 +33,14 @@ defmodule Examples.EPoller do
     Poller.write_keypair(contract_name, keypair)
 
     {:ok, keypairs} =
-      Anoma.LocalDomain.Storage.ls(~k"/!contract_name/discovery_keypair")
+      Anoma.LocalDomain.Storage.ls(
+        ~k"/!contract_name/discovery_keypair"
+      )
 
     assert keypairs ==
-             MapSet.new([~k"/!contract_name/discovery_keypair/!public_key_hex"])
+             MapSet.new([
+               ~k"/!contract_name/discovery_keypair/!public_key_hex"
+             ])
 
     keypairs
   end

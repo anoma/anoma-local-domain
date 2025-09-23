@@ -7,6 +7,9 @@ defmodule Anoma.LocalDomain.System.Poller do
   use Anoma.LocalDomain
   require Logger
 
+  @doc """
+  Starts a poller for indexing a ProtocolAdapter contract
+  """
   def start(contract) do
     args = [
       contract: contract,
@@ -22,10 +25,16 @@ defmodule Anoma.LocalDomain.System.Poller do
     DynamicSupervisor.start_child(AppTasksSupervisor, spec)
   end
 
+  @doc """
+  Stops the PA contract poller
+  """
   def stop(pid) do
     DynamicSupervisor.terminate_child(AppTasksSupervisor, pid)
   end
 
+  @doc """
+  Adds a cipher keypair
+  """
   def add_cipher_keypair(cipher_keypair) do
     GenStateMachine.cast(__MODULE__, {:add_keypair, cipher_keypair})
   end
@@ -59,14 +68,29 @@ defmodule Anoma.LocalDomain.System.Poller do
     """
   end
 
+  @doc """
+  Writes a transaction resource to storage
+  """
   def write_transaction_resource(contract, tag, discovery, resource) do
-    Anoma.LocalDomain.Storage.write_local(~k"/!contract/resource/!tag", %{
-      discovery: discovery,
-      resource: resource
-    })
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/!contract/resource/!tag",
+      %{
+        discovery: discovery,
+        resource: resource
+      }
+    )
   end
 
-  def write_transaction_resource(contract, tag, public_key, discovery, resource) do
+  @doc """
+  Writes a transaction resource to storage, associated with a public key representing the keypair the discovery payload was decrypted with
+  """
+  def write_transaction_resource(
+        contract,
+        tag,
+        public_key,
+        discovery,
+        resource
+      ) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/!contract/resource/!public_key/!tag",
       %{
@@ -76,20 +100,32 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  @doc """
+  Reads a transaction resource
+  """
   def read_transaction_resource(contract, tag) do
     Anoma.LocalDomain.Storage.read_latest(~k"/!contract/resource/!tag")
   end
 
+  @doc """
+  Reads a transaction resource associated with a public key
+  """
   def read_transaction_resource(contract, tag, public_key) do
     Anoma.LocalDomain.Storage.read_latest(
       ~k"/!contract/resource/!public_key/!tag"
     )
   end
 
+  @doc """
+  Reads current known blockheight
+  """
   def read_blockheight(contract) do
     Anoma.LocalDomain.Storage.read_latest(~k"/!contract/blockheight")
   end
 
+  @doc """
+  Writes the current known blockheight
+  """
   def write_blockheight(contract, height) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/!contract/blockheight",
@@ -97,6 +133,9 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  @doc """
+  Writes a cipher keypair to storage
+  """
   def write_keypair(contract, %{secret_key: secret, public_key: public}) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/!contract/discovery_keypair/!public",
@@ -104,6 +143,9 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  @doc """
+  Attempts to discovery payload, given a keypair
+  """
   def can_decrypt(
         %{secret_key: secret_key_hex, public_key: public_key_hex},
         discovery_payload_hex
@@ -145,12 +187,12 @@ defmodule Anoma.LocalDomain.System.Poller do
   @impl true
   def init(opts) do
     data = %{
-      opts | 
-      blockheight:
-        case read_blockheight(opts[:contract]) do
-          {:ok, blockheight} -> blockheight
-          :absent -> 0
-        end
+      opts
+      | blockheight:
+          case read_blockheight(opts[:contract]) do
+            {:ok, blockheight} -> blockheight
+            :absent -> 0
+          end
     }
 
     {:ok, :polling, data, {:state_timeout, 0, :tick}}
@@ -279,7 +321,12 @@ defmodule Anoma.LocalDomain.System.Poller do
   end
 
   @impl true
-  def handle_event(:internal, {:reindex, keypair}, :paused, %{contract: contract}=data) do
+  def handle_event(
+        :internal,
+        {:reindex, keypair},
+        :paused,
+        %{contract: contract} = data
+      ) do
     {:ok, resource_tags} = Anoma.LocalDomain.Storage.ls(["resource"])
 
     for resource_tag <- resource_tags do
