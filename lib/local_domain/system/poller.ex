@@ -5,6 +5,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   use GenStateMachine
   use Anoma.LocalDomain
+  require Logger
 
   def start do
     args = [
@@ -152,10 +153,10 @@ defmodule Anoma.LocalDomain.System.Poller do
           endpoint: endpoint,
           blockheight: current_blockheight
         } = data
-      ) do
-    IO.puts("POLLING")
-    IO.puts("Current Blockheight #{current_blockheight}")
-    IO.puts("Current Keypairs #{inspect(cipher_keypairs)}")
+  ) do
+    Logger.info("POLLING #{endpoint}")
+    Logger.debug("Current Blockheight #{current_blockheight}")
+    Logger.debug("Current Keypairs #{inspect(cipher_keypairs)}")
 
     ## TODO optimise the graphQL so we don't have to do two queries
     {next_blockheight, tags} =
@@ -170,19 +171,19 @@ defmodule Anoma.LocalDomain.System.Poller do
             body["data"]["ProtocolAdapter_TransactionExecuted"]
 
           if length(transactions) > 0 do
-            IO.puts("New blocks found")
+            Logger.debug("New blocks found")
 
             {Enum.at(transactions, 0)["blockNumber"],
              transactions
              |> Enum.map(fn t -> t["tags"] end)
              |> Enum.concat()}
           else
-            IO.puts("No new blocks")
+            Logger.debug("No new blocks")
             {current_blockheight, []}
           end
 
         {:error, reason} ->
-          IO.puts("Query failed #{inspect(reason)}")
+          Logger.error("Query failed #{inspect(reason)}")
           {current_blockheight, []}
       end
 
@@ -201,7 +202,7 @@ defmodule Anoma.LocalDomain.System.Poller do
               Enum.filter(resource_payloads, fn p ->
                 p["tag"] == discovery_payload["tag"]
               end) do
-          IO.puts(
+          Logger.debug(
             "Found discovery payload for #{discovery_payload["tag"]}"
           )
 
@@ -223,7 +224,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         end
 
       reason ->
-        IO.puts("Query failed #{inspect(reason)}")
+        Logger.error("Query failed #{inspect(reason)}")
     end
 
     write_blockheight(next_blockheight)
@@ -239,7 +240,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         :polling,
         %{cipher_keypairs: cipher_keypairs} = data
       ) do
-    IO.puts("Adding cipher keypair #{inspect(keypair)}")
+    Logger.debug("Adding cipher keypair #{inspect(keypair)}")
 
     :ok = write_keypair(keypair)
 
@@ -257,7 +258,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
       "0x" <> blob = resource[:discovery]["blob"]
 
-      IO.puts("Blob #{blob}")
+      Logger.debug("Blob #{blob}")
 
       case can_decrypt(keypair, blob) do
         {:ok, _} -> IO.puts("OK")
