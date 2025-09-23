@@ -7,8 +7,9 @@ defmodule Anoma.LocalDomain.System.Poller do
   use Anoma.LocalDomain
   require Logger
 
-  def start do
+  def start(contract) do
     args = [
+      contract: contract,
       cipher_keypairs: [],
       endpoint: "http://localhost:8080/v1/graphql"
     ]
@@ -58,16 +59,16 @@ defmodule Anoma.LocalDomain.System.Poller do
     """
   end
 
-  def write_transaction_resource(tag, discovery, resource) do
-    Anoma.LocalDomain.Storage.write_local(~k"/resource/!tag", %{
+  def write_transaction_resource(contract, tag, discovery, resource) do
+    Anoma.LocalDomain.Storage.write_local(~k"/!contract/resource/!tag", %{
       discovery: discovery,
       resource: resource
     })
   end
 
-  def write_transaction_resource(tag, public_key, discovery, resource) do
+  def write_transaction_resource(contract, tag, public_key, discovery, resource) do
     Anoma.LocalDomain.Storage.write_local(
-      ~k"/resource/!public_key/!tag",
+      ~k"/!contract/resource/!public_key/!tag",
       %{
         discovery: discovery,
         resource: resource
@@ -75,30 +76,30 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
-  def read_transaction_resource(tag) do
-    Anoma.LocalDomain.Storage.read_latest(~k"/resource/!tag")
+  def read_transaction_resource(contract, tag) do
+    Anoma.LocalDomain.Storage.read_latest(~k"/!contract/resource/!tag")
   end
 
-  def read_transaction_resource(tag, public_key) do
+  def read_transaction_resource(contract, tag, public_key) do
     Anoma.LocalDomain.Storage.read_latest(
-      ~k"/resource/!public_key/!tag"
+      ~k"/!contract/resource/!public_key/!tag"
     )
   end
 
-  def read_blockheight() do
-    Anoma.LocalDomain.Storage.read_latest(~k"/poller/blockheight")
+  def read_blockheight(contract) do
+    Anoma.LocalDomain.Storage.read_latest(~k"/!contract/blockheight")
   end
 
-  def write_blockheight(height) do
+  def write_blockheight(contract, height) do
     Anoma.LocalDomain.Storage.write_local(
-      ~k"/poller/blockheight",
+      ~k"/!contract/blockheight",
       height
     )
   end
 
-  def write_keypair(%{secret_key: secret, public_key: public}) do
+  def write_keypair(contract, %{secret_key: secret, public_key: public}) do
     Anoma.LocalDomain.Storage.write_local(
-      ~k"/discovery_keypair/!public",
+      ~k"/!contract/discovery_keypair/!public",
       secret
     )
   end
@@ -143,14 +144,10 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   @impl true
   def init(opts) do
-    cipher_keypairs = opts[:cipher_keypairs]
-    endpoint = opts[:endpoint]
-
     data = %{
-      cipher_keypairs: cipher_keypairs,
-      endpoint: endpoint,
+      opts | 
       blockheight:
-        case read_blockheight() do
+        case read_blockheight(opts[:contract]) do
           {:ok, blockheight} -> blockheight
           :absent -> 0
         end
@@ -167,7 +164,8 @@ defmodule Anoma.LocalDomain.System.Poller do
         %{
           cipher_keypairs: cipher_keypairs,
           endpoint: endpoint,
-          blockheight: current_blockheight
+          blockheight: current_blockheight,
+          contract: contract
         } = data
       ) do
     Logger.info("POLLING #{endpoint}")
@@ -224,6 +222,7 @@ defmodule Anoma.LocalDomain.System.Poller do
           )
 
           write_transaction_resource(
+            contract,
             discovery_payload["tag"],
             discovery_payload,
             resource_payloads
@@ -238,6 +237,7 @@ defmodule Anoma.LocalDomain.System.Poller do
                 Logger.debug("CAN DECRYPT #{blob}")
 
                 write_transaction_resource(
+                  contract,
                   discovery_payload["tag"],
                   keypair[:public_key],
                   discovery_payload,
@@ -256,7 +256,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         Logger.error("Query failed #{inspect(reason)}")
     end
 
-    write_blockheight(next_blockheight)
+    write_blockheight(contract, next_blockheight)
 
     {:keep_state, %{data | blockheight: next_blockheight},
      {:state_timeout, 12_000, :tick}}
@@ -267,11 +267,11 @@ defmodule Anoma.LocalDomain.System.Poller do
         :cast,
         {:add_keypair, keypair},
         :polling,
-        %{cipher_keypairs: cipher_keypairs} = data
+        %{cipher_keypairs: cipher_keypairs, contract: contract} = data
       ) do
     Logger.debug("Adding cipher keypair #{inspect(keypair)}")
 
-    :ok = write_keypair(keypair)
+    :ok = write_keypair(contract, keypair)
 
     {:next_state, :paused,
      %{data | cipher_keypairs: cipher_keypairs ++ [keypair]},
@@ -279,7 +279,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   end
 
   @impl true
-  def handle_event(:internal, {:reindex, keypair}, :paused, data) do
+  def handle_event(:internal, {:reindex, keypair}, :paused, %{contract: contract}=data) do
     {:ok, resource_tags} = Anoma.LocalDomain.Storage.ls(["resource"])
 
     for resource_tag <- resource_tags do
@@ -295,6 +295,7 @@ defmodule Anoma.LocalDomain.System.Poller do
           Logger.debug("CAN DECRYPT #{blob}")
 
           write_transaction_resource(
+            contract,
             resource_tag,
             keypair[:public_key],
             resource[:discovery],
