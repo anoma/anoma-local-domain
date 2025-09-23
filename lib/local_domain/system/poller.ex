@@ -79,6 +79,13 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  def write_keypair(%{secret_key: secret, public_key: public}) do
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/discovery_keypair/!public",
+      secret
+    )
+  end
+
   def can_decrypt(
         %{secret_key: secret_key_hex, public_key: public_key_hex},
         discovery_payload_hex
@@ -233,6 +240,8 @@ defmodule Anoma.LocalDomain.System.Poller do
         %{cipher_keypairs: cipher_keypairs} = data
       ) do
     IO.puts("Adding cipher keypair #{inspect(keypair)}")
+
+    :ok = write_keypair(keypair)
 
     {:next_state, :paused,
      %{data | cipher_keypairs: cipher_keypairs ++ [keypair]},

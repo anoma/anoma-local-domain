@@ -1,4 +1,8 @@
-defmodule Anoma.LocalDomain.Examples.EPoller do
+defmodule Examples.EPoller do
+  alias Anoma.LocalDomain.System.Poller
+  import ExUnit.Assertions
+  use Anoma.LocalDomain
+
   def decrypt_latest_payload() do
     secret_key_hex =
       "e458b7d0ea3333c9ffbc4a1b50ac5b786fa0fdf91789898c25ccdc3dff1c48e6"
@@ -31,5 +35,25 @@ defmodule Anoma.LocalDomain.Examples.EPoller do
         IO.puts("Decryption failed: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  def cipher_keypair_storage_retrieval() do
+    secret_key_hex =
+      "e458b7d0ea3333c9ffbc4a1b50ac5b786fa0fdf91789898c25ccdc3dff1c48e6"
+
+    public_key_hex =
+      "0385ef12ce29127dbf15a84e23cd9a1e9761a7704351641015f63996b2fcafe95d"
+
+    keypair = %{secret_key: secret_key_hex, public_key: public_key_hex}
+
+    Poller.write_keypair(keypair)
+
+    {:ok, keypairs} =
+      Anoma.LocalDomain.Storage.ls(~k"/discovery_keypair")
+
+    assert keypairs ==
+             MapSet.new([~k"/discovery_keypair/!public_key_hex"])
+
+    keypairs
   end
 end
