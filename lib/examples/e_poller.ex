@@ -13,28 +13,10 @@ defmodule Examples.EPoller do
     discovery_payload_hex =
       "110000000000000000866b72791189682aaac5b81e387fdb0bae5b2a457aedc7c87af3334a210000000000000003b2fc87e9b9067e74db1f9e4f92bef38765977cbfe163a49725fad06ed178d21e0000"
 
-    case Anoma.LocalDomain.System.Poller.can_decrypt(
-           %{secret_key: secret_key_hex, public_key: public_key_hex},
-           discovery_payload_hex
-         ) do
-      {:ok, [0]} ->
-        IO.puts(
-          "Success! Decrypted discovery payload: [0] (null byte as expected)"
-        )
-
-        {:ok, [0]}
-
-      {:ok, decrypted} ->
-        IO.puts(
-          "Success! Decrypted discovery payload: #{inspect(decrypted)}"
-        )
-
-        {:ok, decrypted}
-
-      {:error, reason} ->
-        IO.puts("Decryption failed: #{inspect(reason)}")
-        {:error, reason}
-    end
+    Anoma.LocalDomain.System.Poller.can_decrypt(
+      %{secret_key: secret_key_hex, public_key: public_key_hex},
+      discovery_payload_hex
+    )
   end
 
   def cipher_keypair_storage_retrieval() do

@@ -65,8 +65,24 @@ defmodule Anoma.LocalDomain.System.Poller do
     })
   end
 
+  def write_transaction_resource(tag, public_key, discovery, resource) do
+    Anoma.LocalDomain.Storage.write_local(
+      ~k"/resource/!public_key/!tag",
+      %{
+        discovery: discovery,
+        resource: resource
+      }
+    )
+  end
+
   def read_transaction_resource(tag) do
     Anoma.LocalDomain.Storage.read_latest(~k"/resource/!tag")
+  end
+
+  def read_transaction_resource(tag, public_key) do
+    Anoma.LocalDomain.Storage.read_latest(
+      ~k"/resource/!public_key/!tag"
+    )
   end
 
   def read_blockheight() do
@@ -92,11 +108,11 @@ defmodule Anoma.LocalDomain.System.Poller do
         discovery_payload_hex
       ) do
     with {:ok, secret_key_bytes} <-
-           Base.decode16(secret_key_hex, case: :lower),
+           Base.decode16(secret_key_hex, case: :mixed),
          {:ok, public_key_bytes} <-
-           Base.decode16(public_key_hex, case: :lower),
+           Base.decode16(public_key_hex, case: :mixed),
          {:ok, payload_bytes} <-
-           Base.decode16(discovery_payload_hex, case: :lower) do
+           Base.decode16(discovery_payload_hex, case: :mixed) do
       # The prefix format is [33, 0, 0, 0, 0, 0, 0, 0] where 33 is the compressed public key length
       public_key_with_prefix =
         <<33, 0, 0, 0, 0, 0, 0, 0>> <> public_key_bytes
@@ -110,9 +126,9 @@ defmodule Anoma.LocalDomain.System.Poller do
         })
 
       case AnomaSDK.Arm.decrypt_cipher(payload_list, keypair) do
-        {:ok, decrypted} -> {:ok, decrypted}
-        decrypted when is_list(decrypted) -> {:ok, decrypted}
-        nil -> {:error, "nil"}
+        {:ok, _} -> :ok
+        decrypted when is_list(decrypted) -> :ok
+        nil -> {:error, nil}
         {:error, reason} -> {:error, reason}
       end
     else
@@ -153,7 +169,7 @@ defmodule Anoma.LocalDomain.System.Poller do
           endpoint: endpoint,
           blockheight: current_blockheight
         } = data
-  ) do
+      ) do
     Logger.info("POLLING #{endpoint}")
     Logger.debug("Current Blockheight #{current_blockheight}")
     Logger.debug("Current Keypairs #{inspect(cipher_keypairs)}")
@@ -197,11 +213,12 @@ defmodule Anoma.LocalDomain.System.Poller do
         resource_payloads =
           body["data"]["ProtocolAdapter_ResourcePayload"]
 
-        for discovery_payload <- discovery_payloads,
-            resource_payload <-
-              Enum.filter(resource_payloads, fn p ->
-                p["tag"] == discovery_payload["tag"]
-              end) do
+        for discovery_payload <- discovery_payloads do
+          resource_payloads =
+            Enum.filter(resource_payloads, fn p ->
+              p["tag"] == discovery_payload["tag"]
+            end)
+
           Logger.debug(
             "Found discovery payload for #{discovery_payload["tag"]}"
           )
@@ -209,7 +226,7 @@ defmodule Anoma.LocalDomain.System.Poller do
           write_transaction_resource(
             discovery_payload["tag"],
             discovery_payload,
-            resource_payload
+            resource_payloads
           )
 
           # Attempt decryption + store per cipher key
@@ -217,8 +234,20 @@ defmodule Anoma.LocalDomain.System.Poller do
             "0x" <> blob = discovery_payload["blob"]
 
             case can_decrypt(keypair, blob) do
-              {:ok, _} -> IO.puts("OK")
-              {:error, reason} -> IO.puts("NOT OK #{inspect(reason)}")
+              :ok ->
+                Logger.debug("CAN DECRYPT #{blob}")
+
+                write_transaction_resource(
+                  discovery_payload["tag"],
+                  keypair[:public_key],
+                  discovery_payload,
+                  resource_payloads
+                )
+
+              {:error, reason} ->
+                Logger.debug(
+                  "Failed to decrypt #{blob} #{inspect(reason)}"
+                )
             end
           end
         end
@@ -251,18 +280,29 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   @impl true
   def handle_event(:internal, {:reindex, keypair}, :paused, data) do
-    {:ok, resources} = Anoma.LocalDomain.Storage.ls(["resource"])
+    {:ok, resource_tags} = Anoma.LocalDomain.Storage.ls(["resource"])
 
-    for resource <- resources do
-      {:ok, resource} = Anoma.LocalDomain.Storage.read_latest(resource)
+    for resource_tag <- resource_tags do
+      {:ok, resource} =
+        Anoma.LocalDomain.Storage.read_latest(resource_tag)
 
       "0x" <> blob = resource[:discovery]["blob"]
 
       Logger.debug("Blob #{blob}")
 
       case can_decrypt(keypair, blob) do
-        {:ok, _} -> IO.puts("OK")
-        {:error, reason} -> IO.puts("NOT OK #{inspect(reason)}")
+        :ok ->
+          Logger.debug("CAN DECRYPT #{blob}")
+
+          write_transaction_resource(
+            resource_tag,
+            keypair[:public_key],
+            resource[:discovery],
+            resource[:resource]
+          )
+
+        {:error, reason} ->
+          Logger.debug("Failed to decrypt #{blob} #{inspect(reason)}")
       end
     end
 
