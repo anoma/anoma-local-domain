@@ -356,12 +356,12 @@ defmodule Anoma.LocalDomain.System.Poller do
         :paused,
         %{contract: contract} = data
       ) do
-    {:ok, resource_tags} =
+    {:ok, resource_keys} =
       Anoma.LocalDomain.Storage.ls(~k"/!contract/resource")
 
-    for resource_tag <- resource_tags do
+    for resource_key <- resource_keys do
       {:ok, resource} =
-        Anoma.LocalDomain.Storage.read_latest(resource_tag)
+        Anoma.LocalDomain.Storage.read_latest(resource_key)
 
       "0x" <> blob = resource[:discovery]["blob"]
 
@@ -373,7 +373,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
           write_transaction_resource(
             contract,
-            resource_tag,
+            List.last(resource_key),
             keypair[:public_key],
             resource[:discovery],
             resource[:resource]

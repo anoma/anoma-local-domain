@@ -26,6 +26,7 @@ defmodule IndexerWeb.MixProject do
       {:plug_cowboy, "~> 2.7"},
       {:jason, "~> 1.4"},
       {:cors_plug, "~> 3.0"},
-      {:anoma_local_domain, path: ".."}    ]
+      {:anoma_local_domain, path: ".."}
+    ]
   end
 end
