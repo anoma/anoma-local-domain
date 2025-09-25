@@ -1,9 +1,9 @@
-defmodule Anoma.LocalDomain.Negotiate.MixProject do
+defmodule IndexerWeb.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :example_local_domain_app,
+      app: :indexer_web,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
@@ -14,16 +14,18 @@ defmodule Anoma.LocalDomain.Negotiate.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :anoma_local_domain],
+      included_applications: [],
+      mod: {IndexerWeb.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:anoma_local_domain, path: "../../.."}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
-    ]
+      {:plug_cowboy, "~> 2.7"},
+      {:jason, "~> 1.4"},
+      {:cors_plug, "~> 3.0"},
+      {:anoma_local_domain, path: ".."}    ]
   end
 end
