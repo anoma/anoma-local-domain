@@ -3,7 +3,7 @@ defmodule Examples.EPoller do
   import ExUnit.Assertions
   use Anoma.LocalDomain
 
-  def decrypt_latest_payload() do
+  def decrypt_payload() do
     secret_key_hex =
       "e458b7d0ea3333c9ffbc4a1b50ac5b786fa0fdf91789898c25ccdc3dff1c48e6"
 

@@ -18,7 +18,7 @@ defmodule Anoma.LocalDomain.System.Poller do
     ]
 
     spec =
-      Supervisor.child_spec({Anoma.LocalDomain.System.Poller, args},
+      Supervisor.child_spec({__MODULE__, args},
         restart: :temporary
       )
 
@@ -143,6 +143,25 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  def prepare_payload_and_keypair(
+        payload_bytes,
+        secret_key_bytes,
+        public_key_bytes
+      ) do
+    public_key_with_prefix =
+      <<33, 0, 0, 0, 0, 0, 0, 0>> <> public_key_bytes
+
+    payload_list = :binary.bin_to_list(payload_bytes)
+
+    keypair =
+      AnomaSDK.Arm.Keypair.from_map(%{
+        secret_key: Base.encode64(secret_key_bytes),
+        public_key: Base.encode64(public_key_with_prefix)
+      })
+
+    {payload_list, keypair}
+  end
+
   @doc """
   Attempts to discovery payload, given a keypair
   """
@@ -155,19 +174,13 @@ defmodule Anoma.LocalDomain.System.Poller do
          {:ok, public_key_bytes} <-
            Base.decode16(public_key_hex, case: :mixed),
          {:ok, payload_bytes} <-
-           Base.decode16(discovery_payload_hex, case: :mixed) do
-      # The prefix format is [33, 0, 0, 0, 0, 0, 0, 0] where 33 is the compressed public key length
-      public_key_with_prefix =
-        <<33, 0, 0, 0, 0, 0, 0, 0>> <> public_key_bytes
-
-      payload_list = :binary.bin_to_list(payload_bytes)
-
-      keypair =
-        AnomaSDK.Arm.Keypair.from_map(%{
-          secret_key: Base.encode64(secret_key_bytes),
-          public_key: Base.encode64(public_key_with_prefix)
-        })
-
+           Base.decode16(discovery_payload_hex, case: :mixed),
+         {payload_list, keypair} <-
+           prepare_payload_and_keypair(
+             payload_bytes,
+             secret_key_bytes,
+             public_key_bytes
+           ) do
       case AnomaSDK.Arm.decrypt_cipher(payload_list, keypair) do
         {:ok, _} -> :ok
         decrypted when is_list(decrypted) -> :ok
@@ -186,14 +199,15 @@ defmodule Anoma.LocalDomain.System.Poller do
 
   @impl true
   def init(opts) do
-    data = %{
-      opts
-      | blockheight:
-          case read_blockheight(opts[:contract]) do
-            {:ok, blockheight} -> blockheight
-            :absent -> 0
-          end
-    }
+    data =
+      Map.put(
+        Map.new(opts),
+        :blockheight,
+        case read_blockheight(opts[:contract]) do
+          {:ok, blockheight} -> blockheight
+          :absent -> 0
+        end
+      )
 
     {:ok, :polling, data, {:state_timeout, 0, :tick}}
   end
@@ -215,34 +229,52 @@ defmodule Anoma.LocalDomain.System.Poller do
     Logger.debug("Current Keypairs #{inspect(cipher_keypairs)}")
 
     ## TODO optimise the graphQL so we don't have to do two queries
-    {next_blockheight, tags} =
-      case Req.post(endpoint,
-             json: %{
-               query: transactionExecutedQuery(),
-               variables: %{"min" => current_blockheight}
-             }
-           ) do
-        {:ok, %{status: 200, body: body}} ->
-          transactions =
-            body["data"]["ProtocolAdapter_TransactionExecuted"]
+    case Req.post(endpoint,
+           json: %{
+             query: transactionExecutedQuery(),
+             variables: %{"min" => current_blockheight}
+           }
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        transactions =
+          body["data"]["ProtocolAdapter_TransactionExecuted"]
 
-          if length(transactions) > 0 do
-            Logger.debug("New blocks found")
+        if length(transactions) > 0 do
+          Logger.debug("New blocks found")
 
-            {Enum.at(transactions, 0)["blockNumber"],
-             transactions
-             |> Enum.map(fn t -> t["tags"] end)
-             |> Enum.concat()}
-          else
-            Logger.debug("No new blocks")
-            {current_blockheight, []}
-          end
+          next_blockheight = Enum.at(transactions, 0)["blockNumber"]
 
-        {:error, reason} ->
-          Logger.error("Query failed #{inspect(reason)}")
-          {current_blockheight, []}
-      end
+          tags =
+            transactions
+            |> Enum.map(fn t -> t["tags"] end)
+            |> Enum.concat()
 
+          write_blockheight(contract, next_blockheight)
+
+          {:keep_state, %{data | blockheight: next_blockheight},
+           {:next_event, :internal, {:process_tags, tags}}}
+        else
+          Logger.debug("No new blocks")
+          {:keep_state, data, {:state_timeout, 12_000, :tick}}
+        end
+
+      {:error, reason} ->
+        Logger.error("Query failed #{inspect(reason)}")
+        {:keep_state, data, {:state_timeout, 12_000, :tick}}
+    end
+  end
+
+  @impl true
+  def handle_event(
+        :internal,
+        {:process_tags, tags},
+        :polling,
+        %{
+          endpoint: endpoint,
+          contract: contract,
+          cipher_keypairs: cipher_keypairs
+        } = data
+      ) do
     case Req.post(endpoint,
            json: %{query: payloadQuery(), variables: %{"tags" => tags}}
          ) do
@@ -298,10 +330,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         Logger.error("Query failed #{inspect(reason)}")
     end
 
-    write_blockheight(contract, next_blockheight)
-
-    {:keep_state, %{data | blockheight: next_blockheight},
-     {:state_timeout, 12_000, :tick}}
+    {:keep_state, data, {:state_timeout, 12_000, :tick}}
   end
 
   @impl true
@@ -327,7 +356,8 @@ defmodule Anoma.LocalDomain.System.Poller do
         :paused,
         %{contract: contract} = data
       ) do
-    {:ok, resource_tags} = Anoma.LocalDomain.Storage.ls(["resource"])
+    {:ok, resource_tags} =
+      Anoma.LocalDomain.Storage.ls(~k"/!contract/resource")
 
     for resource_tag <- resource_tags do
       {:ok, resource} =
@@ -351,6 +381,9 @@ defmodule Anoma.LocalDomain.System.Poller do
 
         {:error, reason} ->
           Logger.debug("Failed to decrypt #{blob} #{inspect(reason)}")
+
+        r ->
+          IO.puts(r)
       end
     end
 
