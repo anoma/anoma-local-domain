@@ -71,12 +71,19 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Writes a transaction resource to storage
   """
-  def write_transaction_resource(contract, tag, discovery, resource) do
+  def write_transaction_resource(
+        contract,
+        tag,
+        discovery,
+        resource,
+        is_consumed
+      ) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/!contract/resource/!tag",
       %{
         discovery: discovery,
-        resource: resource
+        resource: resource,
+        is_consumed: is_consumed
       }
     )
   end
@@ -89,13 +96,15 @@ defmodule Anoma.LocalDomain.System.Poller do
         tag,
         public_key,
         discovery,
-        resource
+        resource,
+        is_consumed
       ) do
     Anoma.LocalDomain.Storage.write_local(
       ~k"/!contract/resource/!public_key/!tag",
       %{
         discovery: discovery,
-        resource: resource
+        resource: resource,
+        is_consumed: is_consumed
       }
     )
   end
@@ -246,7 +255,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
           tags =
             transactions
-            |> Enum.map(fn t -> t["tags"] end)
+            |> Enum.map(fn txs -> txs["tags"] end)
             |> Enum.concat()
 
           write_blockheight(contract, next_blockheight)
@@ -275,6 +284,8 @@ defmodule Anoma.LocalDomain.System.Poller do
           cipher_keypairs: cipher_keypairs
         } = data
       ) do
+    tags_with_indices = tags |> Enum.with_index()
+
     case Req.post(endpoint,
            json: %{query: payloadQuery(), variables: %{"tags" => tags}}
          ) do
@@ -295,11 +306,23 @@ defmodule Anoma.LocalDomain.System.Poller do
             "Found discovery payload for #{discovery_payload["tag"]}"
           )
 
+          {_, index} =
+            Enum.find(tags_with_indices, fn {tag, _} ->
+              tag == discovery_payload["tag"]
+            end)
+
+          is_consumed =
+            case rem(index, 2) do
+              0 -> true
+              1 -> false
+            end
+
           write_transaction_resource(
             contract,
             discovery_payload["tag"],
             discovery_payload,
-            resource_payloads
+            resource_payloads,
+            is_consumed
           )
 
           # Attempt decryption + store per cipher key
@@ -315,7 +338,8 @@ defmodule Anoma.LocalDomain.System.Poller do
                   discovery_payload["tag"],
                   keypair[:public_key],
                   discovery_payload,
-                  resource_payloads
+                  resource_payloads,
+                  is_consumed
                 )
 
               {:error, reason} ->
@@ -376,7 +400,8 @@ defmodule Anoma.LocalDomain.System.Poller do
             List.last(resource_key),
             keypair[:public_key],
             resource[:discovery],
-            resource[:resource]
+            resource[:resource],
+            resource[:is_consumed]
           )
 
         {:error, reason} ->
