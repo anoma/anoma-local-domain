@@ -11,33 +11,37 @@ defmodule Anoma.LocalDomain.SampleApplication do
 
   # Public API
 
-  @spec store(String.t(), String.t()) :: any()
-  def store(name, key) do
+  @spec store(String.t(), String.t(), String.t()) :: any()
+  def store(node_id, name, key) do
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/sample/privkey/!name",
       key
     )
   end
 
-  def privkey(name) do
+  def privkey(node_id, name) do
     Anoma.LocalDomain.Scry.scry(
-      ~k"/anoma/local/foo/bar/sample/privkey/!name"
+      node_id,
+      ~k"/anoma/local/!node_id/bar/sample/privkey/!name"
     )
   end
 
-  def pubkey(name) do
+  def pubkey(node_id, name) do
     Anoma.LocalDomain.Scry.scry(
-      ~k"/anoma/local/foo/bar/sample/pubkey/!name"
+      node_id,
+      ~k"/anoma/local/!node_id/bar/sample/pubkey/!name"
     )
   end
 
   # Callbacks
 
   defscry do
-    _prev_prefixes, ~k"pubkey/!name" ->
+    node_id, _prev_prefixes, ~k"!node_id/pubkey/!name" ->
       with {:ok, privkey} <-
              Anoma.LocalDomain.Scry.scry(
-               ~k"/anoma/local/foo/bar/sample/privkey/!name"
+               node_id,
+               ~k"/anoma/local/!node_id/bar/sample/privkey/!name"
              ) do
         {:ok, "PUBLIC_" <> privkey}
       end
