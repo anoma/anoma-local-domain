@@ -21,7 +21,6 @@ defmodule Examples.ELocalDomain do
   end
 
   @spec sigil_rest_segment_pattern_match() :: [String.t()]
-
   def sigil_rest_segment_pattern_match() do
     :rest
 
