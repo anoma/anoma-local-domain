@@ -9,32 +9,43 @@ defmodule Anoma.LocalDomain.System.Clerk do
 
   use Anoma.LocalDomain.Application, name: "clerk"
 
-  def get_applications() do
-    Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications")
+  def get_applications(node_id) do
+    Anoma.LocalDomain.Storage.read_local(
+      node_id,
+      ~k"/clerk/applications"
+    )
   end
 
-  def register_application(module) do
+  def register_application(node_id, module) do
     {:ok, current} =
-      Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications")
+      Anoma.LocalDomain.Storage.read_local(
+        node_id,
+        ~k"/clerk/applications"
+      )
 
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/clerk/applications",
       current |> MapSet.put(module)
     )
   end
 
   @impl true
-  def init() do
-    super()
+  def init(args) do
+    super(args)
 
     # if there is no set of applications registered, initialize with just
     # this application.
-    case Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications") do
+    case Anoma.LocalDomain.Storage.read_local(
+           args[:node_id],
+           ~k"/clerk/applications"
+         ) do
       {:ok, _} ->
         :ok
 
       :absent ->
         Anoma.LocalDomain.Storage.write_local(
+          args[:node_id],
           ~k"/clerk/applications",
           MapSet.new([__MODULE__])
         )

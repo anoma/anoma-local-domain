@@ -30,31 +30,36 @@ defmodule Anoma.LocalDomain.System.Prover do
   @callback verify(binary(), term(), term()) ::
               {:ok, term()} | {:error, term()}
 
-  def get_systems() do
-    Anoma.LocalDomain.Storage.read_local(~k"/prover/systems")
+  def get_systems(node_id) do
+    Anoma.LocalDomain.Storage.read_local(node_id, ~k"/prover/systems")
   end
 
-  def register_system(name) do
+  def register_system(node_id, name) do
     {:ok, current} =
-      Anoma.LocalDomain.Storage.read_local(~k"/prover/systems")
+      Anoma.LocalDomain.Storage.read_local(node_id, ~k"/prover/systems")
 
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/prover/systems",
       current |> MapSet.put(name)
     )
   end
 
   @impl true
-  def init() do
-    super()
+  def init(args) do
+    super(args)
 
     # if there is no set of systems registered, initialize with an empty list
-    case Anoma.LocalDomain.Storage.read_local(~k"/prover/systems") do
+    case Anoma.LocalDomain.Storage.read_local(
+           args[:node_id],
+           ~k"/prover/systems"
+         ) do
       {:ok, _} ->
         :ok
 
       :absent ->
         Anoma.LocalDomain.Storage.write_local(
+          args[:node_id],
           ~k"/prover/systems",
           MapSet.new([])
         )

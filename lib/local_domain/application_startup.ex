@@ -5,9 +5,12 @@ defmodule Anoma.LocalDomain.ApplicationStartup do
 
   use Anoma.LocalDomain
 
-  def start_applications() do
+  def start_applications(args) do
     application_modules =
-      case Anoma.LocalDomain.Storage.read_local(~k"/clerk/applications") do
+      case Anoma.LocalDomain.Storage.read_local(
+             args[:node_id],
+             ~k"/clerk/applications"
+           ) do
         {:ok, modules} ->
           modules
 
@@ -16,7 +19,7 @@ defmodule Anoma.LocalDomain.ApplicationStartup do
       end
 
     for module <- application_modules do
-      Anoma.LocalDomain.Application.register(module)
+      Anoma.LocalDomain.Application.register(module, args)
     end
 
     :ignore

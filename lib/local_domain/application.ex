@@ -13,7 +13,7 @@ defmodule Anoma.LocalDomain.Application do
   this. `init/0` is expected to return `:ok`; any other value means the
   application has failed to start.
 
-  - `scry/2` lets you define handlers for reads from your keyspace. The
+  - `scry/3` lets you define handlers for reads from your keyspace. The
   default implementation simply reads from it; you would want to override
   this if some keys in your keyspace are computed rather than merely stored.
   You may partially override it by providing a catchall head at the bottom
@@ -32,32 +32,33 @@ defmodule Anoma.LocalDomain.Application do
 
       @anoma_application_name unquote(name)
 
-      def init() do
+      def init(args) do
         :ok =
           HandlerRegistry.register(
+            args[:node_id],
             {[~k"/anoma/local"], [@anoma_application_name]},
-            &scry/2
+            &scry/3
           )
       end
 
-      defoverridable init: 0
+      defoverridable init: 1
 
-      def scry(_, _) do
+      def scry(_, _, _) do
         {:error, :no_handler}
       end
 
-      defoverridable scry: 2
+      defoverridable scry: 3
     end
   end
 
-  @callback init() :: :ok | :error
-  @callback scry(list(list(String.t())), list(String.t())) ::
+  @callback init(any()) :: :ok | :error
+  @callback scry(String.t(), list(list(String.t())), list(String.t())) ::
               {:ok, term()}
               | :absent
               | {:error, term()}
 
-  def register(module) do
-    :ok = apply(module, :init, [])
-    System.Clerk.register_application(module)
+  def register(module, args) do
+    :ok = apply(module, :init, [args])
+    System.Clerk.register_application(args[:node_id], module)
   end
 end
