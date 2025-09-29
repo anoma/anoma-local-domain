@@ -20,20 +20,24 @@ defmodule IndexerWeb.Router do
     }
     node_id = System.get_env("LOCAL_DOMAIN_NODE_ID")
 
-    Anoma.LocalDomain.System.Poller.add_cipher_keypair(node_id, keypair)
+    Poller.add_cipher_keypair(node_id, keypair)
     send_resp(conn, 200, "OK")
   end
 
   get "/tags/:public_key" do
     contract = System.get_env("PA_CONTRACT_ID")
     node_id = System.get_env("LOCAL_DOMAIN_NODE_ID")
-    {:ok, ls} = Anoma.LocalDomain.Storage.ls(~k"!contract/resource/!public_key")
+    {:ok, ls} = Anoma.LocalDomain.Storage.ls(node_id, ~k"!contract/resource/!public_key")
+
+    resources = for key <- ls do
+      {:ok, resource} = Anoma.LocalDomain.Storage.read_latest(node_id, key)
+      resource
+    end
 
     send_resp(
       conn,
       200,
-      ls
-      |> Enum.map(fn k -> List.last(k) end)
+      resources
       |> Jason.encode!()
     )
   end

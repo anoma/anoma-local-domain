@@ -87,7 +87,8 @@ defmodule Anoma.LocalDomain.System.Poller do
       %{
         discovery: discovery,
         resource: resource,
-        is_consumed: is_consumed
+        is_consumed: is_consumed,
+        tag: tag
       }
     )
   end
@@ -110,7 +111,8 @@ defmodule Anoma.LocalDomain.System.Poller do
       %{
         discovery: discovery,
         resource: resource,
-        is_consumed: is_consumed
+        is_consumed: is_consumed,
+        tag: tag
       }
     )
   end
