@@ -18,13 +18,15 @@ defmodule IndexerWeb.Router do
       public_key: conn.body_params["public_key"],
       secret_key: conn.body_params["secret_key"]
     }
+    node_id = System.get_env("LOCAL_DOMAIN_NODE_ID")
 
-    Anoma.LocalDomain.System.Poller.add_cipher_keypair(keypair)
+    Anoma.LocalDomain.System.Poller.add_cipher_keypair(node_id, keypair)
     send_resp(conn, 200, "OK")
   end
 
   get "/tags/:public_key" do
     contract = System.get_env("PA_CONTRACT_ID")
+    node_id = System.get_env("LOCAL_DOMAIN_NODE_ID")
     {:ok, ls} = Anoma.LocalDomain.Storage.ls(~k"!contract/resource/!public_key")
 
     send_resp(
