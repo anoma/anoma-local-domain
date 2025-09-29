@@ -12,87 +12,109 @@ defmodule Anoma.LocalDomain.Storage do
 
   typedstruct enforce: true do
     field(:table, reference())
+    field(:node_id, String.t())
     # last written time
     field(:time, non_neg_integer(), default: 0)
   end
 
-  def start_link(arg) do
-    # just one for now. todo: local ids
-    GenServer.start_link(__MODULE__, arg, name: __MODULE__)
+  def start_link(args) do
+    name = Anoma.LocalDomain.Registry.via(args[:node_id], __MODULE__)
+    GenServer.start_link(__MODULE__, args, name: name)
   end
 
   @doc """
   Writes to /anoma/local/[local id]/ at the current time.
   """
-  def write_local(key, value) when is_list(key) do
-    GenServer.cast(__MODULE__, {:write, key, value})
+  def write_local(node_id, key, value) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:write, key, value})
   end
 
   @doc """
   Writes to any possible key, including timestamp. For populating controller
   value cache. Does not update local time (it's intended for non-local values).
   """
-  def write_any(full_key, value) when is_list(full_key) do
-    GenServer.cast(__MODULE__, {:write_any, full_key, value})
+  def write_any(node_id, full_key, value) when is_list(full_key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:write_any, full_key, value})
   end
 
   @doc """
   Deletes a value under /anoma/local/[local id]/ at the current time (it will
   give :absent if read).
   """
-  def delete_local(key) when is_list(key) do
-    GenServer.cast(__MODULE__, {:delete, key})
+  def delete_local(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:delete, key})
   end
 
   @doc """
   Deletes at any possible key.
   """
   def delete_any(full_key) when is_list(full_key) do
-    GenServer.cast(__MODULE__, {:delete_any, full_key})
+    {:ok, node_id} = Anoma.LocalDomain.Registry.local_node_id()
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.cast(name, {:delete_any, full_key})
   end
 
   @doc """
   Reads from any possible key.
   """
-  def read(full_key) when is_list(full_key) do
-    GenServer.call(__MODULE__, {:read, full_key})
+  def read(node_id, full_key) when is_list(full_key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:read, full_key})
   end
 
   @doc """
   Reads from /anoma/local/[local id]/ at the current time.
   """
-  def read_local(key) when is_list(key) do
-    GenServer.call(__MODULE__, {:read_local, key})
+  def read_local(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:read_local, key})
   end
 
   @doc """
   Reads latest from /anoma/local/[local id]/.
   """
-  def read_latest(key) when is_list(key) do
-    GenServer.call(__MODULE__, {:read_latest, key})
+  def read_latest(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:read_latest, key})
   end
 
   @doc """
   I retrieve all keys that are prefixed by key.
   """
-  def ls(key) when is_list(key) do
-    GenServer.call(__MODULE__, {:ls, key})
+  def ls(node_id, key) when is_list(key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:ls, key})
   end
 
   @doc """
   Reads from any possible key, blocking if neither a value nor :absent.
   """
-  def read_and_block(full_key) when is_list(full_key) do
-    GenServer.call(__MODULE__, {:read_and_block, full_key}, :infinity)
+  def read_and_block(node_id, full_key) when is_list(full_key) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenServer.call(name, {:read_and_block, full_key}, :infinity)
   end
 
   # callbacks
 
   @impl true
-  def init(_arg) do
+  def init(args) do
+    # Application.put_env(:mnesia, :schema_location, :ram)
+
+    # IO.puts("OK")
+    # IO.puts(Anoma.LocalDomain.Registry.local_node_id())
+    # with :ok <- :mnesia.start() do
+    #   IO.puts("STARTED MNESIA")
+    # else
+    #   {:error, :failed_to_create_schema, _error} ->
+    #     {:error, :failed_to_create_schema}
+    # end
+
     # todo: set this up with a real backend
     table = :ets.new(__MODULE__, [])
-    {:ok, %__MODULE__{table: table}}
+    {:ok, struct(__MODULE__, Enum.into(args, %{table: table}))}
   end
 
   @impl true
@@ -108,7 +130,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_call({:read_local, key}, _from, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 
@@ -123,7 +145,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_call({:ls, key}, _from, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
 
     case :ets.select(state.table, [
@@ -136,7 +158,7 @@ defmodule Anoma.LocalDomain.Storage do
 
   @impl true
   def handle_call({:read_latest, key}, _from, state) do
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key
 
     case :ets.select(state.table, [{{key, :"$2"}, [], [:"$$"]}]) do
@@ -173,7 +195,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:write, key, value}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
     # IO.puts(key)
@@ -186,7 +208,7 @@ defmodule Anoma.LocalDomain.Storage do
   @impl true
   def handle_cast({:delete, key}, state) do
     # prefix the key
-    local_id = Atom.to_string(__MODULE__)
+    local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
 

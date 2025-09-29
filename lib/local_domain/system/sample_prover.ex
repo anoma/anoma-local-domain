@@ -14,8 +14,12 @@ defmodule Anoma.LocalDomain.System.SampleProver do
   end
 
   @impl true
-  def init() do
-    super()
-    Anoma.LocalDomain.System.Prover.register_system("prover")
+  def init(args) do
+    super(args)
+
+    Anoma.LocalDomain.System.Prover.register_system(
+      args[:node_id],
+      "prover"
+    )
   end
 end

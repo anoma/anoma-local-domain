@@ -18,6 +18,9 @@ defmodule IndexerWeb.Application do
     opts = [strategy: :one_for_one, name: IndexerWeb.Supervisor]
     Supervisor.start_link(children, opts)
 
-    Anoma.LocalDomain.System.Poller.start(System.get_env("PA_CONTRACT_ID"))
+    node_id = System.get_env("LOCAL_DOMAIN_NODE_ID")
+    Anoma.LocalDomain.OTPApplication.start_node(node_id)
+
+    Anoma.LocalDomain.System.Poller.start(node_id, System.get_env("PA_CONTRACT_ID"))
   end
 end

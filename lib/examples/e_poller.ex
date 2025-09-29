@@ -30,10 +30,15 @@ defmodule Examples.EPoller do
 
     contract_name = "contract"
 
-    Poller.write_keypair(contract_name, keypair)
+    node_id = "id1"
+
+    Anoma.LocalDomain.OTPApplication.start_node(node_id)
+
+    Poller.write_keypair(node_id, contract_name, keypair)
 
     {:ok, keypairs} =
       Anoma.LocalDomain.Storage.ls(
+        node_id,
         ~k"/!contract_name/discovery_keypair"
       )
 

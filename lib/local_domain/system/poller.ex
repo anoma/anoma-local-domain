@@ -10,12 +10,13 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Starts a poller for indexing a ProtocolAdapter contract
   """
-  def start(contract) do
-    args = [
+  def start(node_id, contract) do
+    args = %{
       contract: contract,
       cipher_keypairs: [],
-      endpoint: "http://localhost:8080/v1/graphql"
-    ]
+      endpoint: "http://localhost:8080/v1/graphql",
+      node_id: node_id
+    }
 
     spec =
       Supervisor.child_spec({__MODULE__, args},
@@ -35,8 +36,9 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Adds a cipher keypair
   """
-  def add_cipher_keypair(cipher_keypair) do
-    GenStateMachine.cast(__MODULE__, {:add_keypair, cipher_keypair})
+  def add_cipher_keypair(node_id, cipher_keypair) do
+    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
+    GenStateMachine.cast(name, {:add_keypair, cipher_keypair})
   end
 
   def transactionExecutedQuery() do
@@ -72,6 +74,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   Writes a transaction resource to storage
   """
   def write_transaction_resource(
+        node_id,
         contract,
         tag,
         discovery,
@@ -79,6 +82,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         is_consumed
       ) do
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/!contract/resource/!tag",
       %{
         discovery: discovery,
@@ -92,6 +96,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   Writes a transaction resource to storage, associated with a public key representing the keypair the discovery payload was decrypted with
   """
   def write_transaction_resource(
+        node_id,
         contract,
         tag,
         public_key,
@@ -100,6 +105,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         is_consumed
       ) do
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/!contract/resource/!public_key/!tag",
       %{
         discovery: discovery,
@@ -112,15 +118,19 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Reads a transaction resource
   """
-  def read_transaction_resource(contract, tag) do
-    Anoma.LocalDomain.Storage.read_latest(~k"/!contract/resource/!tag")
+  def read_transaction_resource(node_id, contract, tag) do
+    Anoma.LocalDomain.Storage.read_latest(
+      node_id,
+      ~k"/!contract/resource/!tag"
+    )
   end
 
   @doc """
   Reads a transaction resource associated with a public key
   """
-  def read_transaction_resource(contract, tag, public_key) do
+  def read_transaction_resource(node_id, contract, tag, public_key) do
     Anoma.LocalDomain.Storage.read_latest(
+      node_id,
       ~k"/!contract/resource/!public_key/!tag"
     )
   end
@@ -128,15 +138,19 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Reads current known blockheight
   """
-  def read_blockheight(contract) do
-    Anoma.LocalDomain.Storage.read_latest(~k"/!contract/blockheight")
+  def read_blockheight(node_id, contract) do
+    Anoma.LocalDomain.Storage.read_latest(
+      node_id,
+      ~k"/!contract/blockheight"
+    )
   end
 
   @doc """
   Writes the current known blockheight
   """
-  def write_blockheight(contract, height) do
+  def write_blockheight(node_id, contract, height) do
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/!contract/blockheight",
       height
     )
@@ -145,8 +159,12 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Writes a cipher keypair to storage
   """
-  def write_keypair(contract, %{secret_key: secret, public_key: public}) do
+  def write_keypair(node_id, contract, %{
+        secret_key: secret,
+        public_key: public
+      }) do
     Anoma.LocalDomain.Storage.write_local(
+      node_id,
       ~k"/!contract/discovery_keypair/!public",
       secret
     )
@@ -203,16 +221,18 @@ defmodule Anoma.LocalDomain.System.Poller do
     end
   end
 
-  def start_link(opts),
-    do: GenStateMachine.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(opts) do
+    name = Anoma.LocalDomain.Registry.via(opts[:node_id], __MODULE__)
+    GenStateMachine.start_link(__MODULE__, opts, name: name)
+  end
 
   @impl true
   def init(opts) do
     data =
       Map.put(
-        Map.new(opts),
+        opts,
         :blockheight,
-        case read_blockheight(opts[:contract]) do
+        case read_blockheight(opts[:node_id], opts[:contract]) do
           {:ok, blockheight} -> blockheight
           :absent -> 0
         end
@@ -230,7 +250,8 @@ defmodule Anoma.LocalDomain.System.Poller do
           cipher_keypairs: cipher_keypairs,
           endpoint: endpoint,
           blockheight: current_blockheight,
-          contract: contract
+          contract: contract,
+          node_id: node_id
         } = data
       ) do
     Logger.info("POLLING #{endpoint}")
@@ -258,7 +279,7 @@ defmodule Anoma.LocalDomain.System.Poller do
             |> Enum.map(fn txs -> txs["tags"] end)
             |> Enum.concat()
 
-          write_blockheight(contract, next_blockheight)
+          write_blockheight(node_id, contract, next_blockheight)
 
           {:keep_state, %{data | blockheight: next_blockheight},
            {:next_event, :internal, {:process_tags, tags}}}
@@ -281,7 +302,8 @@ defmodule Anoma.LocalDomain.System.Poller do
         %{
           endpoint: endpoint,
           contract: contract,
-          cipher_keypairs: cipher_keypairs
+          cipher_keypairs: cipher_keypairs,
+          node_id: node_id
         } = data
       ) do
     tags_with_indices = tags |> Enum.with_index()
@@ -318,6 +340,7 @@ defmodule Anoma.LocalDomain.System.Poller do
             end
 
           write_transaction_resource(
+            node_id,
             contract,
             discovery_payload["tag"],
             discovery_payload,
@@ -334,6 +357,7 @@ defmodule Anoma.LocalDomain.System.Poller do
                 Logger.debug("CAN DECRYPT #{blob}")
 
                 write_transaction_resource(
+                  node_id,
                   contract,
                   discovery_payload["tag"],
                   keypair[:public_key],
@@ -362,11 +386,15 @@ defmodule Anoma.LocalDomain.System.Poller do
         :cast,
         {:add_keypair, keypair},
         :polling,
-        %{cipher_keypairs: cipher_keypairs, contract: contract} = data
+        %{
+          cipher_keypairs: cipher_keypairs,
+          contract: contract,
+          node_id: node_id
+        } = data
       ) do
     Logger.debug("Adding cipher keypair #{inspect(keypair)}")
 
-    :ok = write_keypair(contract, keypair)
+    :ok = write_keypair(node_id, contract, keypair)
 
     {:next_state, :paused,
      %{data | cipher_keypairs: cipher_keypairs ++ [keypair]},
@@ -378,14 +406,14 @@ defmodule Anoma.LocalDomain.System.Poller do
         :internal,
         {:reindex, keypair},
         :paused,
-        %{contract: contract} = data
+        %{contract: contract, node_id: node_id} = data
       ) do
     {:ok, resource_keys} =
-      Anoma.LocalDomain.Storage.ls(~k"/!contract/resource")
+      Anoma.LocalDomain.Storage.ls(node_id, ~k"/!contract/resource")
 
     for resource_key <- resource_keys do
       {:ok, resource} =
-        Anoma.LocalDomain.Storage.read_latest(resource_key)
+        Anoma.LocalDomain.Storage.read_latest(node_id, resource_key)
 
       "0x" <> blob = resource[:discovery]["blob"]
 
@@ -396,6 +424,7 @@ defmodule Anoma.LocalDomain.System.Poller do
           Logger.debug("CAN DECRYPT #{blob}")
 
           write_transaction_resource(
+            node_id,
             contract,
             List.last(resource_key),
             keypair[:public_key],

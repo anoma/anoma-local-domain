@@ -26,8 +26,8 @@ defmodule Anoma.LocalDomain.DefScry do
     super_scry =
       quote do
         @impl true
-        def scry(prev_prefixes, key) do
-          super(prev_prefixes, key)
+        def scry(node_id, prev_prefixes, key) do
+          super(node_id, prev_prefixes, key)
         end
       end
 
