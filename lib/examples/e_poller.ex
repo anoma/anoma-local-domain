@@ -30,9 +30,7 @@ defmodule Examples.EPoller do
 
     contract_name = "contract"
 
-    node_id = "id1"
-
-    Anoma.LocalDomain.OTPApplication.start_node(node_id)
+    {:ok, node_id, pid} = Examples.ENode.start_node()
 
     Poller.write_keypair(node_id, contract_name, keypair)
 
@@ -47,6 +45,7 @@ defmodule Examples.EPoller do
                ~k"/!contract_name/discovery_keypair/!public_key_hex"
              ])
 
+    Examples.ENode.stop_node(pid)
     keypairs
   end
 end
