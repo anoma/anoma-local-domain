@@ -14,6 +14,7 @@ defmodule Anoma.LocalDomain.System.Poller do
     args = %{
       contract: contract,
       cipher_keypairs: [],
+      # TODO make this an env var
       endpoint: "http://localhost:8080/v1/graphql",
       node_id: node_id
     }
