@@ -7,6 +7,9 @@ defmodule Anoma.LocalDomain.MixProject do
       version: "0.3.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
+      dialyzer: [
+        plt_add_apps: [:mix, :ex_unit]
+      ],
       deps: deps()
     ]
   end
@@ -14,7 +17,7 @@ defmodule Anoma.LocalDomain.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :observer, :wx],
+      extra_applications: [:logger, :observer, :wx, :ex_unit],
       included_applications: [:anoma],
       mod: {Anoma.LocalDomain.OTPApplication, []}
     ]
