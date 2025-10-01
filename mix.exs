@@ -7,7 +7,15 @@ defmodule Anoma.LocalDomain.MixProject do
       version: "0.3.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: [
+        flags: [
+          # Turn off the warning for improper lists, because we use
+          # bare cons frequently and deliberately.
+          "-Wno_improper_lists"
+        ],
+        plt_add_apps: [:mix, :ex_unit, :mnesia]
+      ]
     ]
   end
 
@@ -15,7 +23,7 @@ defmodule Anoma.LocalDomain.MixProject do
   def application do
     [
       extra_applications: [:logger, :observer, :wx],
-      included_applications: [:anoma],
+      included_applications: [:anoma, :mnesia],
       mod: {Anoma.LocalDomain.OTPApplication, []}
     ]
   end
@@ -32,6 +40,7 @@ defmodule Anoma.LocalDomain.MixProject do
       {:ex_doc, "~> 0.38.2", only: :dev, runtime: false},
       {:anoma_sdk, git: "https://github.com/anoma/anoma-sdk"},
       {:gen_state_machine, "~> 3.0"}
+
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]

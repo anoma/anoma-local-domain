@@ -30,7 +30,7 @@ defmodule IndexerWeb.Router do
     {:ok, ls} = Anoma.LocalDomain.Storage.ls(node_id, ~k"!contract/resource/!public_key")
 
     resources = for key <- ls do
-      {:ok, resource} = Anoma.LocalDomain.Storage.read_latest(node_id, key)
+      {:ok, resource} = Anoma.LocalDomain.Storage.read_local(node_id, key)
       resource
     end
 

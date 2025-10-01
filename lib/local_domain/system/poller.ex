@@ -121,7 +121,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   Reads a transaction resource
   """
   def read_transaction_resource(node_id, contract, tag) do
-    Anoma.LocalDomain.Storage.read_latest(
+    Anoma.LocalDomain.Storage.read_local(
       node_id,
       ~k"/!contract/resource/!tag"
     )
@@ -131,7 +131,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   Reads a transaction resource associated with a public key
   """
   def read_transaction_resource(node_id, contract, tag, public_key) do
-    Anoma.LocalDomain.Storage.read_latest(
+    Anoma.LocalDomain.Storage.read_local(
       node_id,
       ~k"/!contract/resource/!public_key/!tag"
     )
@@ -141,7 +141,7 @@ defmodule Anoma.LocalDomain.System.Poller do
   Reads current known blockheight
   """
   def read_blockheight(node_id, contract) do
-    Anoma.LocalDomain.Storage.read_latest(
+    Anoma.LocalDomain.Storage.read_local(
       node_id,
       ~k"/!contract/blockheight"
     )
@@ -415,7 +415,7 @@ defmodule Anoma.LocalDomain.System.Poller do
 
     for resource_key <- resource_keys do
       {:ok, resource} =
-        Anoma.LocalDomain.Storage.read_latest(node_id, resource_key)
+        Anoma.LocalDomain.Storage.read_local(node_id, resource_key)
 
       "0x" <> blob = resource[:discovery]["blob"]
 
