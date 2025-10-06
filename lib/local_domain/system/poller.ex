@@ -10,11 +10,11 @@ defmodule Anoma.LocalDomain.System.Poller do
   @doc """
   Starts a poller for indexing a ProtocolAdapter contract
   """
-  def start(node_id, contract) do
+  def start(node_id, contract, endpoint) do
     args = %{
       contract: contract,
       cipher_keypairs: [],
-      endpoint: "http://localhost:8080/v1/graphql",
+      endpoint: endpoint,
       node_id: node_id
     }
 
