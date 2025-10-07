@@ -26,9 +26,9 @@ defmodule Anoma.LocalDomain.System.Prover do
   end
 
   @callback prove(binary(), term(), term()) ::
-              {:ok, term()} | {:error, term()}
+              :ok | {:ok, term()} | {:error, term()}
   @callback verify(binary(), term(), term()) ::
-              {:ok, term()} | {:error, term()}
+              :ok | {:ok, term()} | {:error, term()}
 
   def get_systems(node_id) do
     Anoma.LocalDomain.Storage.read_local(node_id, ~k"/prover/systems")
