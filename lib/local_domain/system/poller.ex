@@ -272,10 +272,11 @@ defmodule Anoma.LocalDomain.System.Poller do
           transactions =
             events
             |> Enum.map(fn event -> event["transactions"] end)
-            |> Enum.concat
+            |> Enum.concat()
 
           for tx <- transactions do
             Logger.debug("Writing tag resource #{tx["tag"]}")
+
             write_transaction_resource(
               node_id,
               contract,
@@ -284,16 +285,16 @@ defmodule Anoma.LocalDomain.System.Poller do
               tx["resourcePayloads"],
               tx["isConsumed"]
             )
-            
+
             # Attempt decryption + store per cipher key
-            for keypair <- cipher_keypairs, 
-            discovery_payload <- tx["discoveryPayloads"] do
+            for keypair <- cipher_keypairs,
+                discovery_payload <- tx["discoveryPayloads"] do
               "0x" <> blob = discovery_payload["blob"]
-              
+
               case can_decrypt(keypair, blob) do
                 :ok ->
                   Logger.debug("CAN DECRYPT #{blob}")
-                  
+
                   write_transaction_resource(
                     node_id,
                     contract,
@@ -303,7 +304,7 @@ defmodule Anoma.LocalDomain.System.Poller do
                     tx["resourcePayloads"],
                     tx["isConsumed"]
                   )
-                  
+
                 {:error, reason} ->
                   Logger.debug(
                     "#{keypair[:public_key]} can't decrypt #{blob} #{inspect(reason)}"
@@ -311,7 +312,7 @@ defmodule Anoma.LocalDomain.System.Poller do
               end
             end
           end
-          
+
           write_blockheight(node_id, contract, next_blockheight)
 
           {:keep_state, %{data | blockheight: next_blockheight},
@@ -369,7 +370,7 @@ defmodule Anoma.LocalDomain.System.Poller do
         case can_decrypt(keypair, blob) do
           :ok ->
             Logger.debug("CAN DECRYPT #{blob}")
-            
+
             write_transaction_resource(
               node_id,
               contract,
@@ -382,13 +383,13 @@ defmodule Anoma.LocalDomain.System.Poller do
 
           {:error, reason} ->
             Logger.debug("Failed to decrypt #{blob} #{inspect(reason)}")
-            
-            r ->
+
+          r ->
             IO.puts(r)
         end
       end
     end
-    
+
     {:next_state, :polling, data, {:state_timeout, 0, :tick}}
   end
 end
