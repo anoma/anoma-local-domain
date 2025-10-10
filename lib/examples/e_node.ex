@@ -32,13 +32,13 @@ defmodule Examples.ENode do
   end
 
   @spec start_two_different_nodes() ::
-          {pid()} | {:error, :failed_to_start_node}
+          {:ok, pid(), pid()} | {:error, :failed_to_start_node}
   def start_two_different_nodes() do
     assert {:ok, pid1} = Anoma.LocalDomain.OTPApplication.start_node()
     assert {:ok, pid2} = Anoma.LocalDomain.OTPApplication.start_node()
 
     assert pid1 != pid2
 
-    {pid1, pid2}
+    {:ok, pid1, pid2}
   end
 end

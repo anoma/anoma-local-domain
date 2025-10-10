@@ -7,7 +7,7 @@ defmodule NodeTest do
     Examples.ENode.stop_node(pid)
     pid = Examples.ENode.extra_node_fails()
     Examples.ENode.stop_node(pid)
-    {pid1, pid2} = Examples.ENode.start_two_different_nodes()
+    {:ok, pid1, pid2} = Examples.ENode.start_two_different_nodes()
     Examples.ENode.stop_node(pid1)
     Examples.ENode.stop_node(pid2)
   end
