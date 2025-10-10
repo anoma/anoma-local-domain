@@ -11,6 +11,8 @@ defmodule Anoma.LocalDomain.System.Poller do
   Starts a poller for indexing a ProtocolAdapter contract
   """
   def start(node_id, contract, endpoint) do
+    Logger.debug("STARTING POLLER PROCESS")
+
     args = %{
       contract: contract,
       cipher_keypairs: [],
@@ -44,28 +46,21 @@ defmodule Anoma.LocalDomain.System.Poller do
   def transactionExecutedQuery() do
     """
     query($min: Int!) {
-    ProtocolAdapter_TransactionExecuted(order_by: {blockNumber: desc}, where: {blockNumber:   {_gt: $min}}) {
-    id
-    tags
-    blockNumber
-    }
-    }
-    """
-  end
-
-  def payloadQuery() do
-    """
-    query($tags: [String!]!) {
-    ProtocolAdapter_DiscoveryPayload(where: {tag: {_in: $tags}}) {
-    id
-    blob
-    tag
-    }
-    ProtocolAdapter_ResourcePayload(where: {tag: {_in: $tags}}) {
-    id
-    blob
-    tag
-    }
+      ProtocolAdapter_TransactionExecuted(where: {blockNumber: {_gt: $min}}) {
+        transactions {
+          tag
+          isConsumed
+          resourcePayloads {
+            id
+            blob
+          }
+          discoveryPayloads {
+            id
+            blob
+          }
+        }
+        blockNumber
+      }
     }
     """
   end
@@ -172,6 +167,21 @@ defmodule Anoma.LocalDomain.System.Poller do
     )
   end
 
+  def read_commitment_tree(node_id, contract) do
+    Anoma.LocalDomain.Storage.read_latest(
+      node_id,
+      ~k"/!contract/commitments"
+    )
+  end
+
+  def write_commitment_tree(node_id, contract, tree) do
+    Anoma.LocalDomain.Storage.write_local(
+      node_id,
+      ~k"/!contract/commitments",
+      tree
+    )
+  end
+
   def prepare_payload_and_keypair(
         payload_bytes,
         secret_key_bytes,
@@ -231,13 +241,20 @@ defmodule Anoma.LocalDomain.System.Poller do
   @impl true
   def init(opts) do
     data =
-      Map.put(
+      Map.merge(
         opts,
-        :blockheight,
-        case read_blockheight(opts[:node_id], opts[:contract]) do
-          {:ok, blockheight} -> blockheight
-          :absent -> 0
-        end
+        %{
+          blockheight:
+            case read_blockheight(opts[:node_id], opts[:contract]) do
+              {:ok, blockheight} -> blockheight
+              :absent -> 0
+            end,
+          commitments:
+            case read_commitment_tree(opts[:node_id], opts[:contract]) do
+              {:ok, tree} -> tree
+              :absent -> Anoma.LocalDomain.MerkleTree.new()
+            end
+        }
       )
 
     {:ok, :polling, data, {:state_timeout, 0, :tick}}
@@ -253,7 +270,8 @@ defmodule Anoma.LocalDomain.System.Poller do
           endpoint: endpoint,
           blockheight: current_blockheight,
           contract: contract,
-          node_id: node_id
+          node_id: node_id,
+          commitments: commitment_tree
         } = data
       ) do
     Logger.info("POLLING #{endpoint}")
@@ -268,23 +286,79 @@ defmodule Anoma.LocalDomain.System.Poller do
            }
          ) do
       {:ok, %{status: 200, body: body}} ->
-        transactions =
+        events =
           body["data"]["ProtocolAdapter_TransactionExecuted"]
 
-        if length(transactions) > 0 do
+        if length(events) > 0 do
           Logger.debug("New blocks found")
 
-          next_blockheight = Enum.at(transactions, 0)["blockNumber"]
+          next_blockheight = Enum.at(events, -1)["blockNumber"]
 
-          tags =
-            transactions
-            |> Enum.map(fn txs -> txs["tags"] end)
+          transactions =
+            events
+            |> Enum.map(fn event -> event["transactions"] end)
             |> Enum.concat()
 
+          Logger.debug("FOUND #{length(transactions)} TRANSACTIONS")
+
+          next_tree =
+            for tx <- transactions, reduce: commitment_tree do
+              tree ->
+                Logger.debug("WRITING TAG RESOURCE #{tx["tag"]}")
+
+                write_transaction_resource(
+                  node_id,
+                  contract,
+                  tx["tag"],
+                  tx["discoveryPayloads"],
+                  tx["resourcePayloads"],
+                  tx["isConsumed"]
+                )
+
+                # Attempt decryption + store per cipher key
+                for keypair <- cipher_keypairs,
+                    discovery_payload <- tx["discoveryPayloads"] do
+                  "0x" <> blob = discovery_payload["blob"]
+
+                  case can_decrypt(keypair, blob) do
+                    :ok ->
+                      Logger.debug("CAN DECRYPT #{blob}")
+
+                      write_transaction_resource(
+                        node_id,
+                        contract,
+                        tx["tag"],
+                        keypair[:public_key],
+                        tx["discoveryPayloads"],
+                        tx["resourcePayloads"],
+                        tx["isConsumed"]
+                      )
+
+                    {:error, reason} ->
+                      Logger.debug(
+                        "#{keypair[:public_key]} can't decrypt #{blob} #{inspect(reason)}"
+                      )
+                  end
+                end
+
+                if not tx["isConsumed"] do
+                  "0x" <> tag_hex = tx["tag"]
+                  {:ok, tag_bin} = Base.decode16(tag_hex, case: :mixed)
+                  Anoma.LocalDomain.MerkleTree.add(tree, tag_bin)
+                else
+                  tree
+                end
+            end
+
+          write_commitment_tree(node_id, contract, next_tree)
           write_blockheight(node_id, contract, next_blockheight)
 
-          {:keep_state, %{data | blockheight: next_blockheight},
-           {:next_event, :internal, {:process_tags, tags}}}
+          {:keep_state,
+           %{
+             data
+             | blockheight: next_blockheight,
+               commitments: next_tree
+           }, {:state_timeout, 12_000, :tick}}
         else
           Logger.debug("No new blocks")
           {:keep_state, data, {:state_timeout, 12_000, :tick}}
@@ -294,93 +368,6 @@ defmodule Anoma.LocalDomain.System.Poller do
         Logger.error("Query failed #{inspect(reason)}")
         {:keep_state, data, {:state_timeout, 12_000, :tick}}
     end
-  end
-
-  @impl true
-  def handle_event(
-        :internal,
-        {:process_tags, tags},
-        :polling,
-        %{
-          endpoint: endpoint,
-          contract: contract,
-          cipher_keypairs: cipher_keypairs,
-          node_id: node_id
-        } = data
-      ) do
-    tags_with_indices = tags |> Enum.with_index()
-
-    case Req.post(endpoint,
-           json: %{query: payloadQuery(), variables: %{"tags" => tags}}
-         ) do
-      {:ok, %{status: 200, body: body}} ->
-        discovery_payloads =
-          body["data"]["ProtocolAdapter_DiscoveryPayload"]
-
-        resource_payloads =
-          body["data"]["ProtocolAdapter_ResourcePayload"]
-
-        for discovery_payload <- discovery_payloads do
-          resource_payloads =
-            Enum.filter(resource_payloads, fn p ->
-              p["tag"] == discovery_payload["tag"]
-            end)
-
-          Logger.debug(
-            "Found discovery payload for #{discovery_payload["tag"]}"
-          )
-
-          {_, index} =
-            Enum.find(tags_with_indices, fn {tag, _} ->
-              tag == discovery_payload["tag"]
-            end)
-
-          is_consumed =
-            case rem(index, 2) do
-              0 -> true
-              1 -> false
-            end
-
-          write_transaction_resource(
-            node_id,
-            contract,
-            discovery_payload["tag"],
-            discovery_payload,
-            resource_payloads,
-            is_consumed
-          )
-
-          # Attempt decryption + store per cipher key
-          for keypair <- cipher_keypairs do
-            "0x" <> blob = discovery_payload["blob"]
-
-            case can_decrypt(keypair, blob) do
-              :ok ->
-                Logger.debug("CAN DECRYPT #{blob}")
-
-                write_transaction_resource(
-                  node_id,
-                  contract,
-                  discovery_payload["tag"],
-                  keypair[:public_key],
-                  discovery_payload,
-                  resource_payloads,
-                  is_consumed
-                )
-
-              {:error, reason} ->
-                Logger.debug(
-                  "Failed to decrypt #{blob} #{inspect(reason)}"
-                )
-            end
-          end
-        end
-
-      reason ->
-        Logger.error("Query failed #{inspect(reason)}")
-    end
-
-    {:keep_state, data, {:state_timeout, 12_000, :tick}}
   end
 
   @impl true
@@ -417,29 +404,31 @@ defmodule Anoma.LocalDomain.System.Poller do
       {:ok, resource} =
         Anoma.LocalDomain.Storage.read_latest(node_id, resource_key)
 
-      "0x" <> blob = resource[:discovery]["blob"]
+      for discovery <- resource[:discovery] do
+        "0x" <> blob = discovery["blob"]
 
-      Logger.debug("Blob #{blob}")
+        Logger.debug("Blob #{blob}")
 
-      case can_decrypt(keypair, blob) do
-        :ok ->
-          Logger.debug("CAN DECRYPT #{blob}")
+        case can_decrypt(keypair, blob) do
+          :ok ->
+            Logger.debug("CAN DECRYPT #{blob}")
 
-          write_transaction_resource(
-            node_id,
-            contract,
-            List.last(resource_key),
-            keypair[:public_key],
-            resource[:discovery],
-            resource[:resource],
-            resource[:is_consumed]
-          )
+            write_transaction_resource(
+              node_id,
+              contract,
+              List.last(resource_key),
+              keypair[:public_key],
+              resource[:discovery],
+              resource[:resource],
+              resource[:is_consumed]
+            )
 
-        {:error, reason} ->
-          Logger.debug("Failed to decrypt #{blob} #{inspect(reason)}")
+          {:error, reason} ->
+            Logger.debug("Failed to decrypt #{blob} #{inspect(reason)}")
 
-        r ->
-          IO.puts(r)
+          r ->
+            IO.puts(r)
+        end
       end
     end
 
