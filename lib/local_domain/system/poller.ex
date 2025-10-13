@@ -322,54 +322,55 @@ defmodule Anoma.LocalDomain.System.Poller do
           Logger.debug("FOUND #{length(transactions)} TRANSACTIONS")
 
           next_tree =
-            for tx <- transactions, reduce: commitment_tree do
-              tree ->
-                Logger.debug("WRITING TAG RESOURCE #{tx["tag"]}")
+            Anoma.LocalDomain.MerkleTree.add(
+              commitment_tree,
+              transactions
+              |> Enum.filter(fn tx -> tx["isConsumed"] == false end)
+              |> Enum.map(fn tx ->
+                "0x" <> tag_hex = tx["tag"]
+                {:ok, tag_bin} = Base.decode16(tag_hex, case: :mixed)
+                tag_bin
+              end)
+            )
 
-                write_transaction_resource(
-                  node_id,
-                  contract,
-                  tx["tag"],
-                  tx["discoveryPayloads"],
-                  tx["resourcePayloads"],
-                  tx["isConsumed"]
-                )
+          for tx <- transactions do
+            Logger.debug("WRITING TAG RESOURCE #{tx["tag"]}")
 
-                # Attempt decryption + store per cipher key
-                for keypair <- cipher_keypairs,
-                    discovery_payload <- tx["discoveryPayloads"] do
-                  "0x" <> blob = discovery_payload["blob"]
+            write_transaction_resource(
+              node_id,
+              contract,
+              tx["tag"],
+              tx["discoveryPayloads"],
+              tx["resourcePayloads"],
+              tx["isConsumed"]
+            )
 
-                  case can_decrypt(keypair, blob) do
-                    :ok ->
-                      Logger.debug("CAN DECRYPT #{blob}")
+            # Attempt decryption + store per cipher key
+            for keypair <- cipher_keypairs,
+                discovery_payload <- tx["discoveryPayloads"] do
+              "0x" <> blob = discovery_payload["blob"]
 
-                      write_transaction_resource(
-                        node_id,
-                        contract,
-                        tx["tag"],
-                        keypair[:public_key],
-                        tx["discoveryPayloads"],
-                        tx["resourcePayloads"],
-                        tx["isConsumed"]
-                      )
+              case can_decrypt(keypair, blob) do
+                :ok ->
+                  Logger.debug("CAN DECRYPT #{blob}")
 
-                    {:error, reason} ->
-                      Logger.debug(
-                        "#{keypair[:public_key]} can't decrypt #{blob} #{inspect(reason)}"
-                      )
-                  end
-                end
+                  write_transaction_resource(
+                    node_id,
+                    contract,
+                    tx["tag"],
+                    keypair[:public_key],
+                    tx["discoveryPayloads"],
+                    tx["resourcePayloads"],
+                    tx["isConsumed"]
+                  )
 
-                if not tx["isConsumed"] do
-                  Logger.debug("WRITING #{tx["tag"]} TO MERKLE TREE")
-                  "0x" <> tag_hex = tx["tag"]
-                  {:ok, tag_bin} = Base.decode16(tag_hex, case: :mixed)
-                  Anoma.LocalDomain.MerkleTree.add(tree, tag_bin)
-                else
-                  tree
-                end
+                {:error, reason} ->
+                  Logger.debug(
+                    "#{keypair[:public_key]} can't decrypt #{blob} #{inspect(reason)}"
+                  )
+              end
             end
+          end
 
           write_commitment_tree(node_id, contract, next_tree)
           write_blockheight(node_id, contract, next_blockheight)
