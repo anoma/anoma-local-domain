@@ -14,6 +14,9 @@ defmodule Anoma.LocalDomain.MerkleTree do
         0 => [:crypto.hash(:sha256, "EMPTY")]
       }
     )
+
+    field(:next_index, non_neg_integer(), default: 0)
+    field(:capacity, non_neg_integer(), default: 1)
   end
 
   def hash(bytes) do
@@ -40,40 +43,21 @@ defmodule Anoma.LocalDomain.MerkleTree do
     Enum.map(1..n, fn _ -> empty() end)
   end
 
-  def add_leaf(tree, leaf) do
-    leaves = Map.get(tree.nodes, 0)
-
-    leaf_index =
-      leaves
-      |> Enum.find_index(&(&1 == empty()))
-
-    new_leaves = List.replace_at(leaves, leaf_index, leaf)
-
-    if leaf_index + 1 == length(leaves) do
-      new_leaves ++ generate_empty_branch(length(leaves))
-    else
-      new_leaves
-    end
-  end
-
-  def calculate_nodes(leaves, i) do
-    next_level =
-      Enum.chunk_every(leaves, 2, 2, :discard)
-      |> Enum.map(fn [a, b] -> hash(a <> b) end)
-
-    if length(next_level) > 1 do
-      Map.merge(%{i => next_level}, calculate_nodes(next_level, i + 1))
-    else
-      %{i => next_level}
-    end
-  end
-
-  def add(tree, value) do
-    new_leaves = add_leaf(tree, value)
+  def add(tree, values) do
+    {new_leaves, next_index, capacity} =
+      Enum.reduce(
+        values,
+        {Map.get(tree.nodes, 0), tree.next_index, tree.capacity},
+        fn leaf, {new_leaves, next_index, new_capacity} ->
+          add_leaf(new_leaves, next_index, new_capacity, leaf)
+        end
+      )
 
     %Anoma.LocalDomain.MerkleTree{
       nodes:
-        Map.merge(%{0 => new_leaves}, calculate_nodes(new_leaves, 1))
+        Map.merge(%{0 => new_leaves}, calculate_nodes(new_leaves, 1)),
+      next_index: next_index,
+      capacity: capacity
     }
   end
 
@@ -118,5 +102,29 @@ defmodule Anoma.LocalDomain.MerkleTree do
       end)
 
     calculated_root == root
+  end
+
+  defp add_leaf(leaves, index, capacity, leaf) do
+    new_leaves = List.replace_at(leaves, index, leaf)
+    new_index = index + 1
+
+    if new_index == capacity do
+      {new_leaves ++ generate_empty_branch(length(leaves)), new_index,
+       capacity * 2}
+    else
+      {new_leaves, new_index, capacity}
+    end
+  end
+
+  defp calculate_nodes(leaves, i) do
+    next_level =
+      Enum.chunk_every(leaves, 2, 2, :discard)
+      |> Enum.map(fn [a, b] -> hash(a <> b) end)
+
+    if length(next_level) > 1 do
+      Map.merge(%{i => next_level}, calculate_nodes(next_level, i + 1))
+    else
+      %{i => next_level}
+    end
   end
 end
