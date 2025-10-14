@@ -12,7 +12,7 @@ defmodule Examples.EMerkleTree do
       empty_tree()
       |> MerkleTree.add([:crypto.hash(:sha256, "a")])
 
-    assert Enum.at(Map.get(new_tree.nodes, 1), 0) ==
+    assert Map.get(Map.get(new_tree.nodes, 1), 0) ==
              :crypto.hash(
                :sha256,
                :crypto.hash(:sha256, "a") <>
@@ -65,8 +65,13 @@ defmodule Examples.EMerkleTree do
 
     new_tree = MerkleTree.add(empty_tree(), leaves)
 
+    sorted_leaves = Map.get(new_tree.nodes, 0)
+    |> Map.to_list()
+    |> Enum.sort(fn {ind1, _}, {ind2, _} -> ind1 < ind2 end)
+    |> Enum.map(&(elem(&1, 1)))
+
     # Check that the leaves are as expected
-    assert List.starts_with?(Map.get(new_tree.nodes, 0), leaves)
+    assert List.starts_with?(sorted_leaves, leaves)
 
     # Check that index is as expected
     assert new_tree.next_index == leaves_length

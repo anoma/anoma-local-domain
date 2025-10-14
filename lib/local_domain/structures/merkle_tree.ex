@@ -8,13 +8,15 @@ defmodule Anoma.LocalDomain.MerkleTree do
   import Bitwise
   use TypedStruct
 
+  alias __MODULE__
+
   typedstruct enforce: true do
-    field(:nodes, %{integer() => list(binary())},
+    # map from levels to the map from index to the node
+    field(:nodes, %{integer() => %{integer() => binary()}},
       default: %{
-        0 => [:crypto.hash(:sha256, "EMPTY")]
+        0 => %{0 => :crypto.hash(:sha256, "EMPTY")}
       }
     )
-
     field(:next_index, non_neg_integer(), default: 0)
     field(:capacity, non_neg_integer(), default: 1)
   end
@@ -32,60 +34,67 @@ defmodule Anoma.LocalDomain.MerkleTree do
   end
 
   def depth(tree) do
-    length(Map.keys(tree.nodes)) - 1
+    tree.capacity |> :math.log2() |> trunc()
   end
 
   def root(tree) do
-    Enum.at(Map.get(tree.nodes, depth(tree)), 0)
-  end
-
-  def generate_empty_branch(n) do
-    Enum.map(1..n, fn _ -> empty() end)
+    Map.get(Map.get(tree.nodes, depth(tree)), 0)
   end
 
   def add(tree, values) do
-    {new_leaves, next_index, capacity} =
-      Enum.reduce(
-        values,
-        {Map.get(tree.nodes, 0), tree.next_index, tree.capacity},
-        fn leaf, {new_leaves, next_index, new_capacity} ->
-          add_leaf(new_leaves, next_index, new_capacity, leaf)
-        end
-      )
-
-    %Anoma.LocalDomain.MerkleTree{
-      nodes:
-        Map.merge(%{0 => new_leaves}, calculate_nodes(new_leaves, 1)),
-      next_index: next_index,
-      capacity: capacity
-    }
+    Enum.reduce(
+      values,
+      tree,
+      fn leaf, acc_tree ->
+        add_leaf(acc_tree, leaf)
+      end
+    )
   end
 
   def generate_proof(tree, leaf) do
-    {frontiers, root} =
-      for i <- 0..(depth(tree) - 1), reduce: {[], leaf} do
-        {acc, leaf} ->
-          leaves = Map.get(tree.nodes, i)
+    leaves = Map.get(tree.nodes, 0)
 
-          leaf_index =
-            leaves
-            |> Enum.find_index(&(&1 == leaf))
+    # Get the index of the leaf
+    {leaf_index, _} =
+      leaves
+      |> Map.to_list()
+      |> Enum.find(fn
+        {_, ^leaf} ->
+          true
 
-          is_left = (leaf_index &&& 1) == 0
+        _ ->
+          false
+    end)
+
+    {path, root, _index} =
+      for i <- 0..(depth(tree) - 1), reduce: {[], leaf, leaf_index} do
+        {path, node, index} ->
+          # Take the current level of the tree
+          current_nodes = Map.get(tree.nodes, i)
+
+          is_left = (index &&& 1) == 0
 
           if is_left do
-            neighbour = Enum.at(leaves, leaf_index + 1)
+            # If the node is a left one, take its right sibling
+            sibling = Map.get(current_nodes, index + 1, empty())
 
-            {acc ++ [{neighbour, true}], hash(leaf <> neighbour)}
+            # Hash the node on the left and sibling on the right
+            # The index of its parents is going to be index / 2
+            {path ++ [{sibling, true}], hash(node <> sibling),
+             div(index, 2)}
           else
-            neighbour = Enum.at(leaves, leaf_index - 1)
+            # If the node is a right one, take its left sibling
+             sibling = Map.get(current_nodes, index - 1, empty())
 
-            {acc ++ [{neighbour, false}], hash(neighbour <> leaf)}
+            # Hash the node on the right and sibling on the left
+            # The index of its parents is going to be (index - 1) / 2
+            {path ++ [{sibling, false}], hash(sibling <> node),
+             div(index - 1, 2)}
           end
       end
 
     if root == root(tree) do
-      {frontiers, root}
+      {path, root}
     else
       nil
     end
@@ -104,27 +113,60 @@ defmodule Anoma.LocalDomain.MerkleTree do
     calculated_root == root
   end
 
-  defp add_leaf(leaves, index, capacity, leaf) do
-    new_leaves = List.replace_at(leaves, index, leaf)
-    new_index = index + 1
+  defp add_leaf(tree, leaf) do
+    index = tree.next_index
+    depth = depth(tree)
 
-    if new_index == capacity do
-      {new_leaves ++ generate_empty_branch(length(leaves)), new_index,
-       capacity * 2}
+    # Add a leaf and recompute needed intermediary nodes
+    new_nodes = compute_nodes(depth, tree.nodes, index, leaf)
+
+    if index + 1 == tree.capacity do
+               # If the tree is fully filled, we need to recompute a new
+               # root as if by adding an extra empty leaf at next index
+      expanded_nodes =
+        compute_nodes(depth + 1, new_nodes, index + 1, empty())
+
+      %MerkleTree{
+        tree
+        | nodes: expanded_nodes,
+          next_index: index + 1,
+          capacity: tree.capacity * 2
+      }
     else
-      {new_leaves, new_index, capacity}
+      %MerkleTree{tree | nodes: new_nodes, next_index: index + 1}
     end
   end
 
-  defp calculate_nodes(leaves, i) do
-    next_level =
-      Enum.chunk_every(leaves, 2, 2, :discard)
-      |> Enum.map(fn [a, b] -> hash(a <> b) end)
+  defp compute_nodes(depth, nodes, index, leaf) do
+    # Iterate over each level of the tree, updating
+    # only the parent nodes of the leaf
+    {new_nodes, _, _} =
+      for i <- 0..depth, reduce: {nodes, index, leaf} do
+        {acc_nodes, index, node} ->
+          # Fetch the current level of the tree
+          current_nodes = Map.get(acc_nodes, i, %{})
 
-    if length(next_level) > 1 do
-      Map.merge(%{i => next_level}, calculate_nodes(next_level, i + 1))
-    else
-      %{i => next_level}
-    end
+          # Put the updated node at the given index
+          updated_nodes =
+            Map.put(acc_nodes, i, Map.put(current_nodes, index, node))
+
+          is_left = (index &&& 1) == 0
+
+          if is_left do
+            # If the node is a left one, fetch its right sibling
+            sibling = Map.get(current_nodes, index + 1, empty())
+            # Hash the node on the left and sibling on the right
+            # The index of its parents is going to be index / 2
+            {updated_nodes, div(index, 2), hash(node <> sibling)}
+          else
+            # If the node is a right one, fetch its left sibling
+            sibling = Map.get(current_nodes, index - 1)
+             # Hash the node on the left and sibling on the right
+            # The index of its parents is going to be (index - 1) / 2
+            {updated_nodes, div(index - 1, 2), hash(sibling <> node)}
+          end
+      end
+
+    new_nodes
   end
 end
