@@ -204,10 +204,10 @@ defmodule Anoma.LocalDomain.System.Poller do
     payload_list = :binary.bin_to_list(payload_bytes)
 
     keypair =
-      AnomaSDK.Arm.Keypair.from_map(%{
-        secret_key: Base.encode64(secret_key_bytes),
-        public_key: Base.encode64(public_key_with_prefix)
-      })
+      %Anoma.LocalDomain.Keypair{
+        secret_key: :binary.bin_to_list(secret_key_bytes),
+        public_key: :binary.bin_to_list(public_key_with_prefix)
+      }
 
     {payload_list, keypair}
   end
@@ -237,7 +237,7 @@ defmodule Anoma.LocalDomain.System.Poller do
              secret_key_bytes,
              public_key_bytes
            ) do
-      case AnomaSDK.Arm.decrypt_cipher(payload_list, keypair) do
+      case Anoma.LocalDomain.ArmBindings.decrypt_cipher(payload_list, keypair) do
         {:ok, _} -> :ok
         decrypted when is_list(decrypted) -> :ok
         nil -> {:error, nil}

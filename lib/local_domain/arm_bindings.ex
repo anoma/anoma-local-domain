@@ -15,6 +15,7 @@ defmodule Anoma.LocalDomain.ArmBindings do
   """
   @spec random_key_pair :: Keypair.t()
   def random_key_pair, do: :erlang.nif_error(:nif_not_loaded)
+  def test_key_pair(_), do: :erlang.nif_error(:nif_not_loaded)
 
   @doc """
   Decrypt a ciphertext using a private key and public key.
