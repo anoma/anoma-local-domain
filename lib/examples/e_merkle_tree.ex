@@ -65,10 +65,11 @@ defmodule Examples.EMerkleTree do
 
     new_tree = MerkleTree.add(empty_tree(), leaves)
 
-    sorted_leaves = Map.get(new_tree.nodes, 0)
-    |> Map.to_list()
-    |> Enum.sort(fn {ind1, _}, {ind2, _} -> ind1 < ind2 end)
-    |> Enum.map(&(elem(&1, 1)))
+    sorted_leaves =
+      Map.get(new_tree.nodes, 0)
+      |> Map.to_list()
+      |> Enum.sort(fn {ind1, _}, {ind2, _} -> ind1 < ind2 end)
+      |> Enum.map(&elem(&1, 1))
 
     # Check that the leaves are as expected
     assert List.starts_with?(sorted_leaves, leaves)
@@ -82,5 +83,40 @@ defmodule Examples.EMerkleTree do
     assert MerkleTree.depth(new_tree) == expected_depth
 
     new_tree
+  end
+
+  def add_100k_leaves() do
+    initial_leaf = :crypto.hash(:sha256, "25 k")
+
+    leaves =
+      for _i <- 2..100_000, reduce: [initial_leaf] do
+        [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+      end
+
+    MerkleTree.add(empty_tree(), leaves)
+  end
+
+  def add_100k_leaves_on_top() do
+    tree = add_100k_leaves()
+    initial_leaf = :crypto.hash(:sha256, "another one")
+
+    leaves =
+      for _i <- 2..100_000, reduce: [initial_leaf] do
+        [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+      end
+
+    MerkleTree.add(tree, leaves)
+  end
+
+  def add_100k_leaves_more_on_top() do
+    tree = add_100k_leaves_on_top()
+    initial_leaf = :crypto.hash(:sha256, "and another one")
+
+    leaves =
+      for _i <- 2..100_000, reduce: [initial_leaf] do
+        [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+      end
+
+    MerkleTree.add(tree, leaves)
   end
 end

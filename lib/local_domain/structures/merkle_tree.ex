@@ -17,6 +17,7 @@ defmodule Anoma.LocalDomain.MerkleTree do
         0 => %{0 => :crypto.hash(:sha256, "EMPTY")}
       }
     )
+
     field(:next_index, non_neg_integer(), default: 0)
     field(:capacity, non_neg_integer(), default: 1)
   end
@@ -64,7 +65,7 @@ defmodule Anoma.LocalDomain.MerkleTree do
 
         _ ->
           false
-    end)
+      end)
 
     {path, root, _index} =
       for i <- 0..(depth(tree) - 1), reduce: {[], leaf, leaf_index} do
@@ -84,7 +85,7 @@ defmodule Anoma.LocalDomain.MerkleTree do
              div(index, 2)}
           else
             # If the node is a right one, take its left sibling
-             sibling = Map.get(current_nodes, index - 1, empty())
+            sibling = Map.get(current_nodes, index - 1, empty())
 
             # Hash the node on the right and sibling on the left
             # The index of its parents is going to be (index - 1) / 2
@@ -121,8 +122,8 @@ defmodule Anoma.LocalDomain.MerkleTree do
     new_nodes = compute_nodes(depth, tree.nodes, index, leaf)
 
     if index + 1 == tree.capacity do
-               # If the tree is fully filled, we need to recompute a new
-               # root as if by adding an extra empty leaf at next index
+      # If the tree is fully filled, we need to recompute a new
+      # root as if by adding an extra empty leaf at next index
       expanded_nodes =
         compute_nodes(depth + 1, new_nodes, index + 1, empty())
 
@@ -161,7 +162,7 @@ defmodule Anoma.LocalDomain.MerkleTree do
           else
             # If the node is a right one, fetch its left sibling
             sibling = Map.get(current_nodes, index - 1)
-             # Hash the node on the left and sibling on the right
+            # Hash the node on the left and sibling on the right
             # The index of its parents is going to be (index - 1) / 2
             {updated_nodes, div(index - 1, 2), hash(sibling <> node)}
           end
