@@ -149,4 +149,38 @@ defmodule Examples.EMerkleTree do
         {upd_tree1, upd_tree2}
     end
   end
+
+  def block(number) do
+    initial_leaf = :crypto.strong_rand_bytes(32)
+
+    for _i <- 2..number, reduce: [initial_leaf] do
+      [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+    end
+  end
+
+  def merkle_tree_comparisson(block_size, block_number) do
+    tree1 = MerkleTree.new()
+    tree2 = MerkleTreeChunk.new()
+
+   {{t1, _}, {t2, _}} =  for _i <- 1..block_number, reduce: {{0, tree1}, {0, tree2}} do
+      {{time1, tree1}, {time2, tree2}} ->
+        block = block(block_size)
+        {time_tree1, upd_tree1} = :timer.tc(fn -> MerkleTree.add(tree1, block) end)
+        {time_tree2, upd_tree2} = :timer.tc(fn -> MerkleTreeChunk.add(tree2, block) end)
+
+        {{time1 + time_tree1, upd_tree1}, {time2 + time_tree2, upd_tree2}}
+    end
+
+    if t1 > t2 do
+      IO.puts("Batch Approach is Faster")
+      IO.puts("Block size: #{inspect(block_size)}")
+      IO.puts("Block number: #{inspect(block_number)}")
+      IO.puts("Time factor difference: #{inspect(t1 / t2)}")
+    else
+      IO.puts("Sequential Approach is Faster")
+      IO.puts("Block size: #{inspect(block_size)}")
+      IO.puts("Block number: #{inspect(block_number)}")
+      IO.puts("Time factor difference: #{inspect(t2 / t1)}")
+    end
+  end
 end
