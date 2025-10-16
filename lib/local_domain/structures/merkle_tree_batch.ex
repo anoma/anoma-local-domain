@@ -18,6 +18,7 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
       }
     )
 
+    field(:empty_nodes, %{integer() => binary()})
     field(:next_index, non_neg_integer(), default: 0)
     field(:capacity, non_neg_integer(), default: 1)
   end
@@ -31,7 +32,13 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
   end
 
   def new() do
-    %Anoma.LocalDomain.MerkleTreeChunk{}
+    # Assume we have a tree at most of depth 32
+   empty_nodes =  for i <- 1..31, reduce: %{0 => :crypto.hash(:sha256, "EMPTY")} do
+      acc ->
+        previous_empty_hash = Map.get(acc, i - 1)
+        Map.put(acc, i, :crypto.hash(:sha256, previous_empty_hash <> previous_empty_hash))
+    end
+    %Anoma.LocalDomain.MerkleTreeChunk{empty_nodes: empty_nodes}
   end
 
   def depth(tree) do
@@ -57,7 +64,7 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
         {depth(tree), tree.capacity}
       end
     # Add leaves and recompute needed intermediary nodes
-    new_nodes = compute_nodes(depth, tree.nodes, index, leaves)
+    new_nodes = compute_nodes(depth, tree.nodes, tree.empty_nodes, index, leaves)
 
     %MerkleTreeChunk{
       tree
@@ -129,7 +136,7 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
     calculated_root == root
   end
 
-  defp compute_nodes(depth, nodes, index, leaves) do
+  defp compute_nodes(depth, nodes, empty_nodes, index, leaves) do
     # Iterate over each level of the tree, updating
     # only the parent nodes of the given leaves
     {new_nodes, _, _} =
@@ -157,7 +164,7 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
               {parents, j, is_left} ->
                 if is_left do
                   # Get the right sibling
-                  sibling = Map.get(updated_nodes, j + 1, empty())
+                  sibling = Map.get(updated_nodes, j + 1, Map.get(empty_nodes, i))
                   {parents ++ [hash(node <> sibling)], j + 1, not is_left}
                 else
                   {parents, j + 1, not is_left}
@@ -167,7 +174,7 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
           # If the next iteration is the final one, give only one parent, i.e. root
           if i + 1 == depth do
             {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
-             [hd(parents)]}
+             parents}
           else
             {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
              parents}
