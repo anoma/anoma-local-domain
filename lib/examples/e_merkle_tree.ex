@@ -2,6 +2,7 @@ defmodule Examples.EMerkleTree do
   require ExUnit.Assertions
   import ExUnit.Assertions
   alias Anoma.LocalDomain.MerkleTree
+  alias Anoma.LocalDomain.MerkleTreeChunk
 
   def empty_tree() do
     MerkleTree.new()
@@ -118,5 +119,34 @@ defmodule Examples.EMerkleTree do
       end
 
     MerkleTree.add(tree, leaves)
+  end
+
+  def block_with_hundred_commits() do
+    initial_leaf = :crypto.strong_rand_bytes(32)
+
+    for _i <- 2..300, reduce: [initial_leaf] do
+      [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+    end
+  end
+
+  def five_k_blocks(tree, block) do
+    for _i <- 1..5000, reduce: tree do
+      tree -> MerkleTree.add(tree, block)
+    end
+  end
+
+  def merkle_tree_differential() do
+    tree1 = MerkleTree.new()
+    tree2 = MerkleTreeChunk.new()
+
+    for i <- 1..300000, reduce: {tree1, tree2} do
+      {tree1, tree2} ->
+        leaf = :crypto.hash(:sha256, :erlang.term_to_binary(i))
+        upd_tree1 = MerkleTree.add(tree1, [leaf])
+        upd_tree2 = MerkleTreeChunk.add(tree2, [leaf])
+        assert MerkleTree.root(upd_tree1) == MerkleTreeChunk.root(upd_tree2)
+
+        {upd_tree1, upd_tree2}
+    end
   end
 end
