@@ -139,7 +139,7 @@ defmodule Examples.EMerkleTree do
     tree1 = MerkleTree.new()
     tree2 = MerkleTreeChunk.new()
 
-    for i <- 1..300000, reduce: {tree1, tree2} do
+    for i <- 1..500000, reduce: {tree1, tree2} do
       {tree1, tree2} ->
         leaf = :crypto.hash(:sha256, :erlang.term_to_binary(i))
         upd_tree1 = MerkleTree.add(tree1, [leaf])
