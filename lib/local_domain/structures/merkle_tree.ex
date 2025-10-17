@@ -63,28 +63,36 @@ defmodule Anoma.LocalDomain.MerkleTree do
 
   def generate_proof(tree, leaf) do
     {frontiers, root} =
-    for i <- 0..(depth(tree) - 1), reduce: {[], leaf} do
-      {acc, leaf} ->
-        leaves = Map.get(tree.nodes, i)
+      for i <- 0..(depth(tree) - 1), reduce: {[], leaf} do
+        {acc, leaf} ->
+          if (leaf == nil) do
+            {acc, leaf}
+          else
+          leaves = Map.get(tree.nodes, i)
 
         leaf_index =
           leaves
           |> Enum.find_index(&(&1 == leaf))
         
-        is_left = (leaf_index &&& 1) == 0
+          if (leaf_index != nil) do
 
-        if is_left do
-          neighbour = Enum.at(leaves, leaf_index + 1)
-            
-          {acc ++ [{neighbour, true}], hash(leaf <> neighbour)}
-        else
-          neighbour = Enum.at(leaves, leaf_index - 1)
-          
-          {acc ++ [{neighbour, false}], hash(neighbour <> leaf)}
-        end
-    end
+            is_left = (leaf_index &&& 1) == 0
 
-    if root == root(tree) do
+            if is_left do
+              neighbour = Enum.at(leaves, leaf_index + 1)
+
+              {acc ++ [{neighbour, true}], hash(leaf <> neighbour)}
+            else
+              neighbour = Enum.at(leaves, leaf_index - 1)
+
+              {acc ++ [{neighbour, false}], hash(neighbour <> leaf)}
+            end
+          else
+            {acc, nil}
+          end
+          end
+      end  
+    if root == root(tree) && root != nil do
       {frontiers, root}
     else
       nil
