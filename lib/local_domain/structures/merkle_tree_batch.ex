@@ -184,21 +184,15 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
                       Map.get(empty_nodes, i)
                     )
 
-                  {parents ++ [hash(node <> sibling)], j + 1,
+                  {[hash(node <> sibling) | parents], j + 1,
                    not is_left}
                 else
                   {parents, j + 1, not is_left}
                 end
             end
 
-          # If the next iteration is the final one, give only one parent, i.e. root
-          if i + 1 == depth do
-            {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
-             parents}
-          else
-            {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
-             parents}
-          end
+          {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
+           Enum.reverse(parents)}
       end
 
     new_nodes
