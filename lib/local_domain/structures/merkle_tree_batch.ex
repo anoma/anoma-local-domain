@@ -157,42 +157,46 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
           # Fetch the current level of the tree
           current_nodes = Map.get(acc_nodes, i, %{})
 
-          # Put the updated nodes as ordered by the list
-          {updated_nodes, _} =
-            Enum.reduce(nodes, {current_nodes, index}, fn node,
-                                                          {acc, k} ->
-              {Map.put(acc, k, node), k + 1}
-            end)
-
-          {full_nodes, new_index} =
+          # If the first node is the right one, fetch its sibling
+          initial_left_sibling =
             if is_left(index) do
-              {nodes, index}
+              nil
             else
-              {[Map.get(current_nodes, index - 1) | nodes], index - 1}
+              Map.get(current_nodes, index - 1)
             end
 
-          # Calculate the parents of all the given nodes
-          {parents, _, _} =
-            for node <- full_nodes, reduce: {[], new_index, true} do
-              {parents, j, is_left} ->
-                if is_left do
-                  # Get the right sibling
-                  sibling =
-                    Map.get(
-                      updated_nodes,
-                      j + 1,
-                      Map.get(empty_nodes, i)
-                    )
-
-                  {[hash(node <> sibling) | parents], j + 1,
-                   not is_left}
+          # Iterate over all the nodes
+          # Populate the current level with them
+          # Also calculate the list of parent nodes
+          {updated_current_nodes, parents, _, final_left_sibling} =
+            for node <- nodes,
+                reduce: {current_nodes, [], index, initial_left_sibling} do
+              {acc_current_nodes, parents, j, left_sibling} ->
+                if left_sibling do
+                  # Hash the left sibling with the current node
+                  {Map.put(acc_current_nodes, j, node),
+                   [hash(left_sibling <> node) | parents], j + 1, nil}
                 else
-                  {parents, j + 1, not is_left}
+                  # record the current node as a left sibling
+                  {Map.put(acc_current_nodes, j, node), parents, j + 1,
+                   node}
                 end
             end
 
-          {Map.put(acc_nodes, i, updated_nodes), div(index, 2),
-           Enum.reverse(parents)}
+          # If the final node was a left one, we have to compute one more parent
+          # by hashing with an empty node of the appropriate level
+          final_parents =
+            if final_left_sibling do
+              [
+                hash(final_left_sibling <> Map.get(empty_nodes, i))
+                | parents
+              ]
+            else
+              parents
+            end
+
+          {Map.put(acc_nodes, i, updated_current_nodes), div(index, 2),
+           Enum.reverse(final_parents)}
       end
 
     new_nodes
