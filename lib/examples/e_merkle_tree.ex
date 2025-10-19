@@ -155,8 +155,12 @@ defmodule Examples.EMerkleTree do
   def block(number) do
     initial_leaf = :crypto.strong_rand_bytes(32)
 
-    for _i <- 2..number, reduce: [initial_leaf] do
-      [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+    if number == 1 do
+      [initial_leaf]
+    else
+      for _i <- 2..number, reduce: [initial_leaf] do
+        [hd | tl] -> [:crypto.hash(:sha256, hd) | [hd | tl]]
+      end
     end
   end
 
@@ -191,8 +195,6 @@ defmodule Examples.EMerkleTree do
         "Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}"
       )
 
-      IO.puts("Block size: #{inspect(block_size)}")
-      IO.puts("Block number: #{inspect(block_number)}")
       IO.puts("Time factor difference: #{inspect(t1 / t2)}")
     else
       IO.puts("Sequential Approach is Faster")
@@ -201,9 +203,18 @@ defmodule Examples.EMerkleTree do
         "Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}"
       )
 
-      IO.puts("Block size: #{inspect(block_size)}")
-      IO.puts("Block number: #{inspect(block_number)}")
       IO.puts("Time factor difference: #{inspect(t2 / t1)}")
     end
+
+    IO.puts("Block size: #{inspect(block_size)}")
+    IO.puts("Block number: #{inspect(block_number)}")
+
+    IO.puts(
+      "Average sequential block processed in: #{inspect(t1 / block_number)}"
+    )
+
+    IO.puts(
+      "Average batch block processed in: #{inspect(t2 / block_number)}"
+    )
   end
 end
