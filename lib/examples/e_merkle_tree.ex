@@ -144,7 +144,9 @@ defmodule Examples.EMerkleTree do
         leaf = :crypto.hash(:sha256, :erlang.term_to_binary(i))
         upd_tree1 = MerkleTree.add(tree1, [leaf])
         upd_tree2 = MerkleTreeChunk.add(tree2, [leaf])
-        assert MerkleTree.root(upd_tree1) == MerkleTreeChunk.root(upd_tree2)
+
+        assert MerkleTree.root(upd_tree1) ==
+                 MerkleTreeChunk.root(upd_tree2)
 
         {upd_tree1, upd_tree2}
     end
@@ -158,27 +160,47 @@ defmodule Examples.EMerkleTree do
     end
   end
 
-  def merkle_tree_comparisson(initial_commitment_size, block_size, block_number) do
-    {initial_tree1, initial_tree2} = merkle_tree_differential(initial_commitment_size)
+  def merkle_tree_comparisson(
+        initial_commitment_size,
+        block_size,
+        block_number
+      ) do
+    {initial_tree1, initial_tree2} =
+      merkle_tree_differential(initial_commitment_size)
 
-   {{t1, _}, {t2, _}} =  for _i <- 1..block_number, reduce: {{0, initial_tree1}, {0, initial_tree2}} do
-      {{time1, tree1}, {time2, tree2}} ->
-        block = block(block_size)
-        {time_tree1, upd_tree1} = :timer.tc(fn -> MerkleTree.add(tree1, block) end)
-        {time_tree2, upd_tree2} = :timer.tc(fn -> MerkleTreeChunk.add(tree2, block) end)
+    {{t1, _}, {t2, _}} =
+      for _i <- 1..block_number,
+          reduce: {{0, initial_tree1}, {0, initial_tree2}} do
+        {{time1, tree1}, {time2, tree2}} ->
+          block = block(block_size)
 
-        {{time1 + time_tree1, upd_tree1}, {time2 + time_tree2, upd_tree2}}
-    end
+          {time_tree1, upd_tree1} =
+            :timer.tc(fn -> MerkleTree.add(tree1, block) end)
+
+          {time_tree2, upd_tree2} =
+            :timer.tc(fn -> MerkleTreeChunk.add(tree2, block) end)
+
+          {{time1 + time_tree1, upd_tree1},
+           {time2 + time_tree2, upd_tree2}}
+      end
 
     if t1 > t2 do
       IO.puts("Batch Approach is Faster")
-      IO.puts("Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}")
+
+      IO.puts(
+        "Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}"
+      )
+
       IO.puts("Block size: #{inspect(block_size)}")
       IO.puts("Block number: #{inspect(block_number)}")
       IO.puts("Time factor difference: #{inspect(t1 / t2)}")
     else
       IO.puts("Sequential Approach is Faster")
-      IO.puts("Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}")
+
+      IO.puts(
+        "Initial tree depth: #{inspect(MerkleTree.depth(initial_tree1))}"
+      )
+
       IO.puts("Block size: #{inspect(block_size)}")
       IO.puts("Block number: #{inspect(block_number)}")
       IO.puts("Time factor difference: #{inspect(t2 / t1)}")
