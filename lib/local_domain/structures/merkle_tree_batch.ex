@@ -21,6 +21,10 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
     field(:empty_nodes, %{integer() => binary()})
     field(:next_index, non_neg_integer(), default: 0)
     field(:capacity, non_neg_integer(), default: 1)
+
+    # leaf map with leaves as keys
+    # for efficient path computation
+    field(:leaf_map, %{binary() => integer()}, default: %{})
   end
 
   def hash(bytes) do
@@ -61,7 +65,14 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
 
   def add(tree, leaves) do
     index = tree.next_index
-    new_commitment_length = index + length(leaves)
+
+    # Compute the new leaf map and new commitment length
+    # in the same loop
+    {new_leaf_map, new_commitment_length} =
+      for leaf <- leaves, reduce: {tree.leaf_map, index} do
+        {map_acc, index_acc} ->
+          {Map.put(map_acc, index_acc, leaf), index + 1}
+      end
 
     {depth, capacity} =
       if new_commitment_length >= tree.capacity do
@@ -82,24 +93,14 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
       tree
       | nodes: new_nodes,
         next_index: new_commitment_length,
-        capacity: capacity
+        capacity: capacity,
+        leaf_map: new_leaf_map
     }
   end
 
   def generate_proof(tree, leaf) do
-    leaves = Map.get(tree.nodes, 0)
-
     # Get the index of the leaf
-    {leaf_index, _} =
-      leaves
-      |> Map.to_list()
-      |> Enum.find(fn
-        {_, ^leaf} ->
-          true
-
-        _ ->
-          false
-      end)
+    leaf_index = Map.get(tree.leaf_map, leaf)
 
     {path, root, _index} =
       for i <- 0..(depth(tree) - 1), reduce: {[], leaf, leaf_index} do
