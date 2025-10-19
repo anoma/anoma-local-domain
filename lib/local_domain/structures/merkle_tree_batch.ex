@@ -33,11 +33,21 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
 
   def new() do
     # Assume we have a tree at most of depth 32
-   empty_nodes =  for i <- 1..31, reduce: %{0 => :crypto.hash(:sha256, "EMPTY")} do
-      acc ->
-        previous_empty_hash = Map.get(acc, i - 1)
-        Map.put(acc, i, :crypto.hash(:sha256, previous_empty_hash <> previous_empty_hash))
-    end
+    empty_nodes =
+      for i <- 1..31, reduce: %{0 => :crypto.hash(:sha256, "EMPTY")} do
+        acc ->
+          previous_empty_hash = Map.get(acc, i - 1)
+
+          Map.put(
+            acc,
+            i,
+            :crypto.hash(
+              :sha256,
+              previous_empty_hash <> previous_empty_hash
+            )
+          )
+      end
+
     %Anoma.LocalDomain.MerkleTreeChunk{empty_nodes: empty_nodes}
   end
 
@@ -63,8 +73,10 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
       else
         {depth(tree), tree.capacity}
       end
+
     # Add leaves and recompute needed intermediary nodes
-    new_nodes = compute_nodes(depth, tree.nodes, tree.empty_nodes, index, leaves)
+    new_nodes =
+      compute_nodes(depth, tree.nodes, tree.empty_nodes, index, leaves)
 
     %MerkleTreeChunk{
       tree
@@ -152,11 +164,12 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
               {Map.put(acc, k, node), k + 1}
             end)
 
-          {full_nodes, new_index} = if is_left(index) do
-            {nodes, index}
-          else
-            {[Map.get(current_nodes, index - 1) | nodes], index - 1}
-          end
+          {full_nodes, new_index} =
+            if is_left(index) do
+              {nodes, index}
+            else
+              {[Map.get(current_nodes, index - 1) | nodes], index - 1}
+            end
 
           # Calculate the parents of all the given nodes
           {parents, _, _} =
@@ -164,8 +177,15 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
               {parents, j, is_left} ->
                 if is_left do
                   # Get the right sibling
-                  sibling = Map.get(updated_nodes, j + 1, Map.get(empty_nodes, i))
-                  {parents ++ [hash(node <> sibling)], j + 1, not is_left}
+                  sibling =
+                    Map.get(
+                      updated_nodes,
+                      j + 1,
+                      Map.get(empty_nodes, i)
+                    )
+
+                  {parents ++ [hash(node <> sibling)], j + 1,
+                   not is_left}
                 else
                   {parents, j + 1, not is_left}
                 end
@@ -185,6 +205,6 @@ defmodule Anoma.LocalDomain.MerkleTreeChunk do
   end
 
   defp is_left(index) do
-     (index &&& 1) == 0
+    (index &&& 1) == 0
   end
 end
