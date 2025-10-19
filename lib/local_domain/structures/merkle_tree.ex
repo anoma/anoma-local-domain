@@ -33,11 +33,21 @@ defmodule Anoma.LocalDomain.MerkleTree do
 
   def new() do
     # Assume we have a tree at most of depth 32
-    empty_nodes =  for i <- 1..31, reduce: %{0 => :crypto.hash(:sha256, "EMPTY")} do
-      acc ->
-        previous_empty_hash = Map.get(acc, i - 1)
-        Map.put(acc, i, :crypto.hash(:sha256, previous_empty_hash <> previous_empty_hash))
-    end
+    empty_nodes =
+      for i <- 1..31, reduce: %{0 => :crypto.hash(:sha256, "EMPTY")} do
+        acc ->
+          previous_empty_hash = Map.get(acc, i - 1)
+
+          Map.put(
+            acc,
+            i,
+            :crypto.hash(
+              :sha256,
+              previous_empty_hash <> previous_empty_hash
+            )
+          )
+      end
+
     %Anoma.LocalDomain.MerkleTree{empty_nodes: empty_nodes}
   end
 
@@ -126,13 +136,20 @@ defmodule Anoma.LocalDomain.MerkleTree do
     depth = depth(tree)
 
     # Add a leaf and recompute needed intermediary nodes
-    new_nodes = compute_nodes(depth, tree.nodes, tree.empty_nodes, index, leaf)
+    new_nodes =
+      compute_nodes(depth, tree.nodes, tree.empty_nodes, index, leaf)
 
     if index + 1 == tree.capacity do
       # If the tree is fully filled, we need to recompute a new
       # root as if by adding an extra empty leaf at next index
       expanded_nodes =
-        compute_nodes(depth + 1, new_nodes, tree.empty_nodes, index + 1, empty())
+        compute_nodes(
+          depth + 1,
+          new_nodes,
+          tree.empty_nodes,
+          index + 1,
+          empty()
+        )
 
       %MerkleTree{
         tree
@@ -162,7 +179,9 @@ defmodule Anoma.LocalDomain.MerkleTree do
 
           if is_left do
             # If the node is a left one, fetch its right sibling
-            sibling = Map.get(current_nodes, index + 1, Map.get(empty_nodes, i))
+            sibling =
+              Map.get(current_nodes, index + 1, Map.get(empty_nodes, i))
+
             # Hash the node on the left and sibling on the right
             # The index of its parents is going to be index / 2
             {updated_nodes, div(index, 2), hash(node <> sibling)}
