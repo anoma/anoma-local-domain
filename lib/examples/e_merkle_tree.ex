@@ -1,6 +1,7 @@
 defmodule Examples.EMerkleTree do
   require ExUnit.Assertions
   import ExUnit.Assertions
+  alias Anoma.LocalDomain.BatchMerkleTree
   alias Anoma.LocalDomain.MerkleTree
 
   def empty_tree() do
@@ -92,5 +93,36 @@ defmodule Examples.EMerkleTree do
     assert MerkleTree.depth(new_tree) == expected_depth
 
     new_tree
+  end
+
+  def merkle_tree_differential_root_comparisson(leaves_number \\ 10_000) do
+    tree1 = MerkleTree.new()
+    tree2 = BatchMerkleTree.new()
+
+    for i <- 1..leaves_number, reduce: {tree1, tree2} do
+      {tree1, tree2} ->
+        leaf = :crypto.hash(:sha256, :erlang.term_to_binary(i))
+        upd_tree1 = MerkleTree.add(tree1, [leaf])
+        upd_tree2 = BatchMerkleTree.add(tree2, [leaf])
+
+        assert MerkleTree.root(upd_tree1) ==
+                 BatchMerkleTree.root(upd_tree2)
+
+        {upd_tree1, upd_tree2}
+    end
+  end
+
+  def merkle_tree_differential_proof_comparisson(leaves_number \\ 100) do
+    {tree1, tree2} =
+      merkle_tree_differential_root_comparisson(leaves_number)
+
+    leaves = Map.get(tree1.nodes, 0)
+
+    for {_index, leaf} <- leaves do
+      assert MerkleTree.generate_proof(tree1, leaf) ==
+               BatchMerkleTree.generate_proof(tree2, leaf)
+
+      assert MerkleTree.generate_proof(tree1, leaf) != nil
+    end
   end
 end
