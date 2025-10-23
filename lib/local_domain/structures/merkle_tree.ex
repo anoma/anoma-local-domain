@@ -65,26 +65,34 @@ defmodule Anoma.LocalDomain.MerkleTree do
     {frontiers, root} =
       for i <- 0..(depth(tree) - 1), reduce: {[], leaf} do
         {acc, leaf} ->
+          if (leaf == nil) do
+            {acc, leaf}
+          else
           leaves = Map.get(tree.nodes, i)
 
-          leaf_index =
-            leaves
-            |> Enum.find_index(&(&1 == leaf))
+        leaf_index =
+          leaves
+          |> Enum.find_index(&(&1 == leaf))
+        
+          if (leaf_index != nil) do
 
-          is_left = (leaf_index &&& 1) == 0
+            is_left = (leaf_index &&& 1) == 0
 
-          if is_left do
-            neighbour = Enum.at(leaves, leaf_index + 1)
+            if is_left do
+              neighbour = Enum.at(leaves, leaf_index + 1)
 
-            {acc ++ [{neighbour, true}], hash(leaf <> neighbour)}
+              {acc ++ [{neighbour, true}], hash(leaf <> neighbour)}
+            else
+              neighbour = Enum.at(leaves, leaf_index - 1)
+
+              {acc ++ [{neighbour, false}], hash(neighbour <> leaf)}
+            end
           else
-            neighbour = Enum.at(leaves, leaf_index - 1)
-
-            {acc ++ [{neighbour, false}], hash(neighbour <> leaf)}
+            {acc, nil}
           end
-      end
-
-    if root == root(tree) do
+          end
+      end  
+    if root == root(tree) && root != nil do
       {frontiers, root}
     else
       nil
