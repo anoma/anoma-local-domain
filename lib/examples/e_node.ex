@@ -1,7 +1,14 @@
 defmodule Examples.ENode do
+  @moduledoc """
+  I provide the examples for LocalDomain nodes
+  """
+  
   require ExUnit.Assertions
   import ExUnit.Assertions
 
+  use Anoma.LocalDomain
+  use ExExample
+  
   @spec start_node() ::
           {:ok, String.t(), pid()} | {:error, :failed_to_start_node}
   def start_node() do
@@ -19,26 +26,22 @@ defmodule Examples.ENode do
     :ok
   end
 
-  @spec extra_node_fails() :: pid() | {:error, :failed_to_start_node}
-  def extra_node_fails() do
-    assert {:ok, pid1} =
-             Anoma.LocalDomain.OTPApplication.start_node("id1")
+  example extra_node_fails() do
+    assert {:ok, pid1} = Anoma.LocalDomain.OTPApplication.start_node("id1")
 
-    assert {:error, {:already_started, pid2}} =
-             Anoma.LocalDomain.OTPApplication.start_node("id1")
+    assert {:error, {:already_started, pid2}} = Anoma.LocalDomain.OTPApplication.start_node("id1")
 
     assert pid1 == pid2
-    pid1
+    stop_node(pid1)
   end
 
-  @spec start_two_different_nodes() ::
-          {:ok, pid(), pid()} | {:error, :failed_to_start_node}
-  def start_two_different_nodes() do
+  example start_two_different_nodes() do
     assert {:ok, pid1} = Anoma.LocalDomain.OTPApplication.start_node()
     assert {:ok, pid2} = Anoma.LocalDomain.OTPApplication.start_node()
 
     assert pid1 != pid2
 
-    {:ok, pid1, pid2}
+    stop_node(pid1)
+    stop_node(pid2)
   end
 end

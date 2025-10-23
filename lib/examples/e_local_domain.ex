@@ -3,12 +3,13 @@ defmodule Examples.ELocalDomain do
   I provide the examples for Anoma.LocalDomain
   """
 
+  use ExExample
+  use Anoma.LocalDomain
+  
   require ExUnit.Assertions
   import ExUnit.Assertions
-  use Anoma.LocalDomain
-
-  @spec sigil_key_segment_pattern_match() :: String.t()
-  def sigil_key_segment_pattern_match() do
+  
+  example sigil_key_segment_pattern_match do
     c = "segment c"
 
     assert ~k"/a/b/!c" == ["a", "b", "segment c"]
@@ -17,15 +18,17 @@ defmodule Examples.ELocalDomain do
 
     assert c == "matched c"
 
-    c
+    c    
   end
 
-  @spec sigil_rest_segment_pattern_match() :: [String.t()]
-  def sigil_rest_segment_pattern_match() do
+  example sigil_rest_segment_pattern_match do
     :rest
 
     ~k"/a/&rest" = ["a", "b", "c"]
 
     assert rest == ["b", "c"]
   end
+  
+  def rerun?(_), do: false
+
 end
