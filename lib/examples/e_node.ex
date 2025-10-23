@@ -1,4 +1,8 @@
 defmodule Examples.ENode do
+  @moduledoc """
+  I provide the examples for LocalDomain nodes
+  """
+  
   require ExUnit.Assertions
   import ExUnit.Assertions
 
