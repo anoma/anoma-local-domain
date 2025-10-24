@@ -94,9 +94,11 @@ defmodule Anoma.LocalDomain.MerkleTree do
 
             is_left = (index &&& 1) == 0
 
+            empty = Map.get(tree.empty_nodes, i)
+
             if is_left do
               # If the node is a left one, take its right sibling
-              sibling = Map.get(current_nodes, index + 1, empty())
+              sibling = Map.get(current_nodes, index + 1, empty)
 
               # Hash the node on the left and sibling on the right
               # The index of its parents is going to be index / 2
@@ -104,7 +106,7 @@ defmodule Anoma.LocalDomain.MerkleTree do
                div(index, 2)}
             else
               # If the node is a right one, take its left sibling
-              sibling = Map.get(current_nodes, index - 1, empty())
+              sibling = Map.get(current_nodes, index - 1)
 
               # Hash the node on the right and sibling on the left
               # The index of its parents is going to be (index - 1) / 2
