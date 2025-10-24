@@ -47,6 +47,14 @@ defmodule Examples.EMerkleTree do
     {frontiers, root}
   end
 
+  def generate_a_proof_wrongly() do
+    tree = expand_merkle_tree()
+
+    assert nil == MerkleTree.generate_proof(tree, :crypto.hash(:sha256, "d"))
+
+    :ok
+  end
+  
   def verify_a_proof() do
     {frontiers, root} = generate_a_proof()
     MerkleTree.verify_proof(:crypto.hash(:sha256, "b"), frontiers, root)
