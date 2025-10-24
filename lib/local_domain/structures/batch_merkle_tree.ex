@@ -71,7 +71,7 @@ defmodule Anoma.LocalDomain.BatchMerkleTree do
     {new_leaf_map, new_commitment_length} =
       for leaf <- leaves, reduce: {tree.leaf_map, index} do
         {map_acc, index_acc} ->
-          {Map.put(map_acc, index_acc, leaf), index_acc + 1}
+          {Map.put(map_acc, leaf, index_acc), index_acc + 1}
       end
 
     {depth, capacity} =
