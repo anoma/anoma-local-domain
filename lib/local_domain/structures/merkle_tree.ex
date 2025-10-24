@@ -123,9 +123,9 @@ defmodule Anoma.LocalDomain.MerkleTree do
     end
   end
 
-  def verify_proof(leaf, frontiers, root) do
+  def verify_proof(leaf, path, root) do
     calculated_root =
-      Enum.reduce(frontiers, leaf, fn {neighbour, is_left}, acc ->
+      Enum.reduce(path, leaf, fn {neighbour, is_left}, acc ->
         if is_left do
           hash(acc <> neighbour)
         else
