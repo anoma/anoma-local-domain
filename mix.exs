@@ -4,7 +4,7 @@ defmodule Anoma.LocalDomain.MixProject do
   def project do
     [
       app: :anoma_local_domain,
-      version: "0.3.1",
+      version: "0.3.2",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
