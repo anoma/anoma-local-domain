@@ -15,7 +15,7 @@ defmodule Examples.ENode do
 
   @spec stop_node(pid()) :: :ok
   def stop_node(pid) do
-    Supervisor.stop(pid)
+    Anoma.LocalDomain.OTPApplication.stop_node(pid)
     :ok
   end
 

@@ -31,4 +31,9 @@ defmodule Anoma.LocalDomain.OTPApplication do
       {Anoma.LocalDomain.NodeSupervisor, [node_id: node_id]}
     )
   end
+
+  def stop_node(pid) do
+    Supervisor.stop(pid)
+    :ok
+  end
 end

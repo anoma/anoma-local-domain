@@ -9,6 +9,7 @@ defmodule Anoma.LocalDomain.Storage do
   use Anoma.LocalDomain
   use GenServer
   use TypedStruct
+  require Logger
 
   typedstruct enforce: true do
     field(:table, reference())
@@ -66,19 +67,11 @@ defmodule Anoma.LocalDomain.Storage do
   end
 
   @doc """
-  Reads from /anoma/local/[local id]/ at the current time.
+  Reads locally from /anoma/local/[local id]/, most recent time.
   """
   def read_local(node_id, key) when is_list(key) do
     name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
     GenServer.call(name, {:read_local, key})
-  end
-
-  @doc """
-  Reads latest from /anoma/local/[local id]/.
-  """
-  def read_latest(node_id, key) when is_list(key) do
-    name = Anoma.LocalDomain.Registry.via(node_id, __MODULE__)
-    GenServer.call(name, {:read_latest, key})
   end
 
   @doc """
@@ -101,40 +94,36 @@ defmodule Anoma.LocalDomain.Storage do
 
   @impl true
   def init(args) do
-    # Application.put_env(:mnesia, :schema_location, :ram)
+    :ok = Application.put_env(:mnesia, :dir, ~c".mnesiastore/")
 
-    # IO.puts("OK")
-    # IO.puts(Anoma.LocalDomain.Registry.local_node_id())
-    # with :ok <- :mnesia.start() do
-    #   IO.puts("STARTED MNESIA")
-    # else
-    #   {:error, :failed_to_create_schema, _error} ->
-    #     {:error, :failed_to_create_schema}
-    # end
+    case :mnesia.create_schema([node()]) do
+      :ok -> :ok
+      {:error, {_, {:already_exists, _}}} -> :ok
+    end
 
-    # todo: set this up with a real backend
-    table = :ets.new(__MODULE__, [])
-    {:ok, struct(__MODULE__, Enum.into(args, %{table: table}))}
-  end
+    with :ok <- :mnesia.start() do
+      case :mnesia.create_table(__MODULE__,
+             attributes: [:key, :value],
+             type: :set,
+             disc_copies: [node()]
+           ) do
+        {:atomic, :ok} -> __MODULE__
+        {:aborted, {:already_exists, _}} -> __MODULE__
+      end
 
-  @impl true
-  def handle_call({:read, full_key}, _from, state) do
-    with [{^full_key, value}] <- :ets.lookup(state.table, full_key) do
-      {:reply, {:ok, value}, state}
+      :mnesia.wait_for_tables([__MODULE__], 5_000)
+
+      {:ok, struct(__MODULE__, Enum.into(args, %{table: __MODULE__}))}
     else
-      [] -> {:reply, :absent, state}
-      e -> {:reply, {:error, e}, state}
+      {:error, :failed_to_create_schema, _error} ->
+        {:error, :failed_to_create_schema}
     end
   end
 
   @impl true
-  def handle_call({:read_local, key}, _from, state) do
-    # prefix the key
-    local_id = state.node_id
-    time_string = Integer.to_string(state.time)
-    key = ~k"/anoma/local/!local_id/!time_string" ++ key
-
-    with [{^key, value}] <- :ets.lookup(state.table, key) do
+  def handle_call({:read, full_key}, _from, state) do
+    with [{^full_key, value}] <-
+           :mnesia.dirty_read(state.table, full_key) do
       {:reply, {:ok, value}, state}
     else
       [] -> {:reply, :absent, state}
@@ -148,24 +137,34 @@ defmodule Anoma.LocalDomain.Storage do
     local_id = state.node_id
     full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
 
-    case :ets.select(state.table, [
-           {{full_key, :"$3"}, [], [key ++ [:"$2"]]}
-         ]) do
-      [] -> {:reply, {:ok, MapSet.new()}, state}
-      value -> {:reply, {:ok, MapSet.new(value)}, state}
+    f = fn ->
+      :mnesia.select(state.table, [
+        {{state.table, full_key, :"$3"}, [], [key ++ [:"$2"]]}
+      ])
+    end
+
+    case :mnesia.transaction(f) do
+      {:atomic, []} -> {:reply, {:ok, MapSet.new()}, state}
+      {:atomic, value} -> {:reply, {:ok, MapSet.new(value)}, state}
     end
   end
 
   @impl true
-  def handle_call({:read_latest, key}, _from, state) do
+  def handle_call({:read_local, key}, _from, state) do
     local_id = state.node_id
     key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key
 
-    case :ets.select(state.table, [{{key, :"$2"}, [], [:"$$"]}]) do
-      [] ->
+    f = fn ->
+      :mnesia.select(state.table, [
+        {{state.table, key, :"$2"}, [], [:"$$"]}
+      ])
+    end
+
+    case :mnesia.transaction(f) do
+      {:atomic, []} ->
         {:reply, :absent, state}
 
-      value ->
+      {:atomic, value} ->
         {:reply,
          {:ok,
           value
@@ -174,17 +173,6 @@ defmodule Anoma.LocalDomain.Storage do
           |> Enum.at(1)}, state}
     end
   end
-
-  # def handle_call({:read_latest_where, key, _k, _v}, _from, state) do
-  #   # prefix the key
-  #   local_id = Atom.to_string(__MODULE__)
-  #   full_key = ~k"/anoma/local/!local_id" ++ [:"$1"] ++ key ++ [:"$2"]
-
-  #   case :ets.select(state.table, [{{full_key, :"$3"}, [], [key ++ [:"$2"], "$3"]}]) do
-  #     [] -> {:reply, :absent, state}
-  #     value -> {:reply, {:ok, MapSet.new(value)}, state}
-  #   end
-  # end
 
   @impl true
   def handle_call({:read_and_block, _full_key}, _from, state) do
@@ -198,9 +186,8 @@ defmodule Anoma.LocalDomain.Storage do
     local_id = state.node_id
     time_string = Integer.to_string(state.time + 1)
     key = ~k"/anoma/local/!local_id/!time_string" ++ key
-    # IO.puts(key)
 
-    :ets.insert(state.table, {key, value})
+    :mnesia.dirty_write({state.table, key, value})
 
     {:noreply, %{state | time: state.time + 1}}
   end

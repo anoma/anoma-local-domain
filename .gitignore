@@ -21,3 +21,5 @@ anoma_local_domain-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+.mnesiastore/*
