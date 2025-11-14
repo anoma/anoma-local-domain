@@ -16,10 +16,12 @@ defmodule Anoma.LocalDomain.OTPApplication do
        name: AppTasksSupervisor, strategy: :one_for_one},
       {Elixir.Registry,
        keys: :unique, name: Anoma.LocalDomain.Registry},
-      {DynamicSupervisor, name: Anoma.LocalDomain.NodePool}
+      {DynamicSupervisor, name: Anoma.LocalDomain.NodePool},
+      Anoma.LocalDomain.SchemeRegistry
     ]
 
     opts = [strategy: :one_for_one, name: Anoma.LocalDomain.Supervisor]
+
     Supervisor.start_link(children, opts)
   end
 
