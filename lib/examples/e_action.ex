@@ -6,7 +6,7 @@ defmodule Examples.EAction do
   alias Anoma.LocalDomain.Action
 
   def transacted_inc() do
-    unit = Action.transact(Examples.EResource.inc(2))
+    unit = Action.transact(Examples.EScheme.inc(2))
     created = Map.get(unit, :created)
     assert length(created) == 2
     unit
@@ -20,7 +20,7 @@ defmodule Examples.EAction do
     unit = transacted_inc()
     obj = Enum.at(unit.created, 1)
     consumed? = false
-    logic = obj.logic
+    logic = Anoma.LocalDomain.Resource.compile_logic(obj)
 
     result = apply(logic, [obj, unit, consumed?])
 
@@ -35,13 +35,18 @@ defmodule Examples.EAction do
     consumed? = false
     logic = Map.get(obj, :logic)
 
+    # IO.inspect(logic)
+    # IO.inspect(unit)
     result =
       Anoma.LocalDomain.Scheme.eval([
         "apply",
         logic,
-        obj,
-        unit,
-        consumed?
+        [
+          "list",
+          obj,
+          unit,
+          consumed?
+        ]
       ])
 
     assert result == true

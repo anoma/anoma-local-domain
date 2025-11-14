@@ -1,0 +1,271 @@
+defmodule Anoma.LocalDomain.Scheme do
+  @moduledoc """
+  I am the Scheme DSL Interpreter
+  """
+
+  defmacro __using__(_opts) do
+    quote do
+      Module.register_attribute(__MODULE__, :scheme_fns,
+        accumulate: true
+      )
+
+      import Anoma.LocalDomain.Scheme
+      @before_compile unquote(__MODULE__)
+    end
+  end
+
+  defmacro __before_compile__(env) do
+    module = env.module
+    scheme_fns = Module.get_attribute(module, :scheme_fns)
+
+    quote do
+      def __scheme_fns__ do
+        unquote(Macro.escape(scheme_fns))
+      end
+
+      # This doesn't work first compilation, only recompilation
+      @after_compile __MODULE__
+      def __after_compile__(_env, _bytecode) do
+        Anoma.LocalDomain.SchemeRegistry.register(unquote(module))
+      end
+    end
+  end
+
+  @doc """
+  Define an elixir->scheme mapping
+  """
+  defmacro defscheme(scheme_name, {name, _meta, args},
+             do: [{:->, _, [[body_elixir], body_scheme]}]
+           ) do
+    quote do
+      def unquote(name)(unquote_splicing(args)) do
+        unquote(body_elixir)
+      end
+
+      @scheme_fns {__MODULE__, unquote(name), unquote(scheme_name),
+                   unquote(body_scheme)}
+    end
+  end
+
+  def default_env(extra \\ %{}) do
+    {:ok, scheme_fns} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
+
+    Map.merge(
+      scheme_fns,
+      extra
+    )
+  end
+
+  def eval(num, _env) when is_number(num) do
+    num
+  end
+
+  def eval(var, env) when is_binary(var) do
+    Map.fetch!(env, var)
+  end
+
+  def eval(atom, _env) when is_atom(atom) do
+    atom
+  end
+
+  def eval(func, _env) when is_function(func) do
+    func
+  end
+
+  def eval(true, _env) do
+    true
+  end
+
+  def eval(false, _env) do
+    false
+  end
+
+  def eval(nil, _env) do
+    nil
+  end
+
+  def eval(map, env) when is_map(map) do
+    map
+    |> Enum.map(fn {k, v} -> {eval(k, env), eval(v, env)} end)
+    |> Map.new()
+  end
+
+  def eval({"closure", params, body}, _env) do
+    {"closure", params, body}
+  end
+
+  def eval({"native", module, functor}, _env) do
+    {"native", module, functor}
+  end
+
+  def eval([op | args], env) do
+    case op do
+      "if" ->
+        if eval(hd(args), env) do
+          eval(Enum.at(args, 1), env)
+        else
+          eval(Enum.at(args, 2), env)
+        end
+
+      "quote" ->
+        hd(args)
+
+      "list" ->
+        ["list" | Enum.map(args, fn arg -> eval(arg, env) end)]
+
+      "car" ->
+        case eval(hd(args), env) do
+          ["list" | args] -> hd(args)
+          _ -> :err
+        end
+
+      "cdr" ->
+        case eval(hd(args), env) do
+          ["list" | args] ->
+            if length(args) == 1 do
+              nil
+            else
+              ["list" | tl(args)]
+            end
+
+          _ ->
+            :err
+        end
+
+      "cons" ->
+        car = eval(hd(args), env)
+
+        case eval(Enum.at(args, 1), env) do
+          ["list" | args] -> ["list", car | args]
+          nil -> ["list", car]
+          _ -> :err
+        end
+
+      "and" ->
+        case eval(hd(args), env) do
+          true -> eval(Enum.at(args, 1), env)
+          false -> false
+        end
+
+      "or" ->
+        case eval(hd(args), env) do
+          true -> true
+          false -> eval(Enum.at(args, 1), env)
+        end
+
+      "lambda" ->
+        {"closure", hd(args), Enum.at(args, 1)}
+
+      "apply" ->
+        [op, args] = args
+
+        args = eval(args, env)
+
+        case eval(op, env) do
+          {"closure", params, body} ->
+            env =
+              Enum.reduce(Enum.zip(params, tl(args)), env, fn {param,
+                                                               arg},
+                                                              acc ->
+                Map.put(acc, param, arg)
+              end)
+
+            eval(body, env)
+
+          {"native", module, functor} ->
+            apply(module, functor, tl(args))
+
+          _ ->
+            :err
+        end
+
+      _ ->
+        eval(["apply", op, ["list" | args]], env)
+    end
+  end
+
+  def eval(expr) do
+    eval(expr, default_env())
+  end
+
+  def ast_to_scheme(n) when is_integer(n) do
+    n
+  end
+
+  def ast_to_scheme(k) when is_atom(k) do
+    k
+  end
+
+  def ast_to_scheme(b) when is_boolean(b) do
+    b
+  end
+
+  def ast_to_scheme(xs) when is_list(xs) do
+    ["list" | xs]
+  end
+
+  def ast_to_scheme(
+        {:if, _, [condition, [do: if_branch, else: else_branch]]}
+      ) do
+    [
+      "if",
+      ast_to_scheme(condition),
+      ast_to_scheme(if_branch),
+      ast_to_scheme(else_branch)
+    ]
+  end
+
+  def ast_to_scheme({:fn, _, [{:->, _, [inputs, body]}]}) do
+    [
+      "lambda",
+      Enum.map(inputs, fn i -> ast_to_scheme(i) end),
+      ast_to_scheme(body)
+    ]
+  end
+
+  def ast_to_scheme({:%{}, _, kvs}) do
+    # Maps
+    Map.new(kvs)
+  end
+
+  def ast_to_scheme({:%, _, [mod, {:%{}, _, kvs}]}) do
+    # Structs
+    mod = ast_to_scheme(mod)
+
+    kvs =
+      Enum.map(kvs, fn {k, v} ->
+        {ast_to_scheme(k), ast_to_scheme(v)}
+      end)
+
+    ast_to_scheme({:%{}, [], kvs ++ [__struct__: mod]})
+  end
+
+  def ast_to_scheme({:__aliases__, _, mod}) do
+    Module.concat(mod)
+  end
+
+  def ast_to_scheme({:., _, [mod, fn_name]}) do
+    # Module namespaced function
+    mod = ast_to_scheme(mod)
+
+    case Anoma.LocalDomain.SchemeRegistry.get_elixir(mod, fn_name) do
+      {:ok, body} -> body
+      nil -> nil
+    end
+  end
+
+  def ast_to_scheme({fn_name, _, args}) when is_list(args) do
+    # Function Application
+    [
+      ast_to_scheme(fn_name)
+      | Enum.map(args, fn x -> ast_to_scheme(x) end)
+    ]
+  end
+
+  def ast_to_scheme({:erlang, _, _}), do: :erlang
+
+  def ast_to_scheme({sym, _, _mod}) do
+    # Syms are currently strings
+    Atom.to_string(sym)
+  end
+end

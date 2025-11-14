@@ -2,6 +2,8 @@ defmodule ActionTest do
   use ExUnit.Case
   doctest Anoma.LocalDomain.Action
 
+  # Examples.EScheme.__after_compile__([], [])
+
   test "Run the examples" do
     Examples.EAction.transacted_inc()
     Examples.EAction.unit_as_scheme()

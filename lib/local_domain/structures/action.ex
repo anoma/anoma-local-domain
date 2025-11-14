@@ -11,10 +11,72 @@ defmodule Anoma.LocalDomain.Action do
     field(:created, any())
   end
 
+  def empty?(%__MODULE__{consumed: consumed, created: created}) do
+    consumed == [] && created == []
+  end
+
+  def related_objects_for_resources(resources, created?) do
+    Enum.reduce(
+      resources,
+      %__MODULE__{consumed: [], created: []},
+      fn resource, acc ->
+        related =
+          case created? do
+            true ->
+              Anoma.LocalDomain.ObjToResource.related_create(
+                resource.data
+              )
+
+            false ->
+              Anoma.LocalDomain.ObjToResource.related_use(resource.data)
+          end
+
+        %__MODULE__{
+          consumed:
+            acc.consumed ++
+              Enum.map(
+                related[:consumed],
+                &Anoma.LocalDomain.ObjToResource.obj_to_resource/1
+              ),
+          created:
+            acc.created ++
+              Enum.map(
+                related[:created],
+                &Anoma.LocalDomain.ObjToResource.obj_to_resource/1
+              )
+        }
+      end
+    )
+  end
+
+  def compute_related(%__MODULE__{consumed: consumed, created: created}) do
+    related_use = related_objects_for_resources(consumed, false)
+    related_create = related_objects_for_resources(created, true)
+
+    related_objects = %__MODULE__{
+      consumed: related_use.consumed ++ related_create.consumed,
+      created: related_use.created ++ related_create.created
+    }
+
+    if empty?(related_objects) do
+      %__MODULE__{
+        consumed: consumed,
+        created: created
+      }
+    else
+      recur = compute_related(related_objects)
+
+      %__MODULE__{
+        consumed: consumed ++ recur.consumed,
+        created: created ++ recur.created
+      }
+    end
+  end
+
   def transact_expression(expression, result) do
     [method | consumed] = expression
 
-    %__MODULE__{
+    action = %__MODULE__{
       created: [
         Anoma.LocalDomain.ObjToResource.obj_to_resource(method),
         Anoma.LocalDomain.ObjToResource.obj_to_resource(result)
@@ -24,6 +86,9 @@ defmodule Anoma.LocalDomain.Action do
           Anoma.LocalDomain.ObjToResource.obj_to_resource(obj)
         end)
     }
+
+    # TODO Calculate related resources for each resource, add to action
+    compute_related(action)
   end
 
   defmacro transact(expression) do
@@ -50,13 +115,13 @@ defmodule Anoma.LocalDomain.Action do
       consumed: [
         "list"
         | Enum.map(consumed, fn c ->
-            Anoma.LocalDomain.ObjToResource.scheme(c.data)
+            Anoma.LocalDomain.ObjToResource.scheme(c)
           end)
       ],
       created: [
         "list"
         | Enum.map(created, fn c ->
-            Anoma.LocalDomain.ObjToResource.scheme(c.data)
+            Anoma.LocalDomain.ObjToResource.scheme(c)
           end)
       ]
     }

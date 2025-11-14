@@ -1,60 +1,162 @@
-# defmodule Anoma.LocalDomain.FixedSupply do
-#   use TypedStruct
+defmodule Anoma.LocalDomain.FixedSupply do
+  use TypedStruct
 
-#   typedstruct enforced: true do
-#     field(:quantity, integer())
-#     field(:should_create, boolean())
-#   end
+  typedstruct enforced: true do
+    field(:quantity, integer())
+    field(:supply_quantity, integer())
+  end
 
-# end
+  def supply_quantity(%__MODULE__{supply_quantity: supply}) do
+    supply
+  end
 
-# defimpl Anoma.LocalDomain.ObjToResource, for: Anoma.LocalDomain.FixedSupply do
-#   def obj_to_resource(x) do
-#     %Anoma.LocalDomain.Resource{
-#       data: x,
-#       logic: fn obj, instance, consumedp ->
-#         if consumedp do
-#           true
-#         else
-#           Enum.filter(
-#           if obj.should_create do
-#             instance.created
-#           else
-#             instance.consumed
-#           end,
-#             fn finding ->
-#               finding.__struct__ == obj.__struct__ && finding.quantity == obj.quantity
-#             end
-#           )
-#         end
-#       end
-#     }
-#   end
+  def make_fixed_supply(q) do
+    %__MODULE__{
+      supply_quantity: 1000,
+      quantity: q
+    }
+  end
 
-#   def scheme(x) do
-#     %{
-#       data: %{type: :fixed_supply, quantity: x.quantity, should_create: x.should_create},
-#       logic: [
-#         "lambda",
-#         ["obj", "instance", "consumedp"],
-#         [
-#           "if", "consumedp", "true",
-#           ["filter",
-#            ["lambda" ["x"],
-#             ["==",
-#              ["get", ["get", "x", :data], :type],
-#              ["get", ["get", "obj", :data], :type]
-#             ]
-#            ],
-#            ["if",
-#             ["get", ["get", "obj", :data], :should_create],
-#             ["get", "instance", :created],
-#             ["get", "instance", :consumed]
-#           ]
-#         ]
-#         ]
-#       ],
-#       quantity: x.quantity
-#     }
-#   end
-# end
+  def scheme_fn(:supply_quantity) do
+    ["lambda", ["x"], ["get", "x", :supply_quantity]]
+  end
+
+  def scheme_fn(:make_fixed_supply) do
+    ["lambda", ["q"], %{supply_quantity: 1000, quantity: "q"}]
+  end
+end
+
+defimpl Anoma.LocalDomain.ObjToResource,
+  for: Anoma.LocalDomain.FixedSupply do
+  def fixed_supply_holds(obj, instance, using) do
+    :erlang.not(
+      :erlang.==(
+        length(
+          Enum.filter(
+            Map.get(instance, :created),
+            fn finding ->
+              :erlang.and(
+                :erlang.==(
+                  Map.get(finding, :type),
+                  Anoma.LocalDomain.FixedSupplyIntent
+                ),
+                :erlang.and(
+                  :erlang.==(
+                    Map.get(finding, :quantity),
+                    Map.get(obj, :quantity)
+                  ),
+                  :erlang.==(
+                    Map.get(Map.get(finding, :data), :should_create),
+                    using
+                  )
+                )
+              )
+            end
+          )
+        ),
+        0
+      )
+    )
+  end
+
+  def obj_to_resource(x) do
+    %Anoma.LocalDomain.Resource{
+      data: x,
+      logic: fn obj, instance, consumedp ->
+        if consumedp do
+          fixed_supply_holds(obj, instance, true)
+        else
+          fixed_supply_holds(obj, instance, false)
+        end
+      end,
+      quantity: x.quantity,
+      type: Anoma.LocalDomain.FixedSupply
+    }
+  end
+
+  def scheme_fixed_supply_holds(should_create) do
+    [
+      "not",
+      [
+        "==",
+        [
+          "length",
+          [
+            "filter",
+            [
+              "lambda",
+              ["finding"],
+              [
+                "and",
+                [
+                  "and",
+                  [
+                    "==",
+                    ["get", "finding", :type],
+                    Anoma.LocalDomain.FixedSupplyIntent
+                  ],
+                  [
+                    "==",
+                    ["get", "finding", :quantity],
+                    ["get", "obj", :quantity]
+                  ]
+                ],
+                [
+                  "==",
+                  ["get", ["get", "finding", :data], :should_create],
+                  should_create
+                ]
+              ]
+            ],
+            ["get", "instance", :created]
+          ]
+        ],
+        0
+      ]
+    ]
+  end
+
+  def scheme(data) do
+    %{
+      data: %{
+        supply_quantity: data.supply_quantity
+      },
+      logic: [
+        "lambda",
+        ["obj", "instance", "consumedp"],
+        [
+          "if",
+          "consumedp",
+          scheme_fixed_supply_holds(true),
+          scheme_fixed_supply_holds(false)
+        ]
+      ],
+      quantity: data.quantity,
+      type: Anoma.LocalDomain.FixedSupply
+    }
+  end
+
+  def related_use(data) do
+    %{
+      consumed: [],
+      created: [
+        %Anoma.LocalDomain.FixedSupplyIntent{
+          quantity: data.quantity,
+          should_create: true
+        }
+      ]
+    }
+  end
+
+  def related_create(data) do
+    %{
+      consumed: [],
+      created: [
+        %Anoma.LocalDomain.FixedSupplyIntent{
+          quantity: data.quantity,
+          should_create: false
+        }
+      ]
+    }
+  end
+end
