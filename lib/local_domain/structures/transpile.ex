@@ -36,19 +36,19 @@ defmodule Anoma.LocalDomain.Transpile do
 
   # Transpile a Scheme expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, labels) when is_binary(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_binary(expr) do
     assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, {:symbol_expr, expr}}}}
     block = [assignment | block]
     {state, block}
   end
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, labels) when is_number(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_number(expr) do
     assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, {:literal_expr, expr}}}}
     block = [assignment | block]
     {state, block}
   end
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, labels) when is_boolean(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_boolean(expr) do
     assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, expr}}}
     block = [assignment | block]
     {state, block}
