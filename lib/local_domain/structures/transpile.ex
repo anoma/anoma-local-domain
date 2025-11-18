@@ -34,48 +34,52 @@ defmodule Anoma.LocalDomain.Transpile do
 
   def identifier({:function_declarator, decl, params}, ident), do: {:function_declarator, identifier(decl, ident), params}
 
+  # Assign the expression to the target if it is there, otherwise just evaluate it
+  
+  def maybe_assign_expr(expr, {target_expr, target_type}, block) do
+    [{:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, expr}}} | block]
+  end
+
+  def maybe_assign_expr({:address_of_expr, {:symbol_expr, _}}, nil, block), do: block
+
+  def maybe_assign_expr(expr, nil, block), do: [{:expr_stmt, expr} | block]
+
   # Transpile a Scheme expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_binary(expr) do
-    assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, {:symbol_expr, expr}}}}
-    block = [assignment | block]
-    {state, block}
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_binary(expr) do
+    {state, maybe_assign_expr({:symbol_expr, expr}, target, block)}
   end
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_number(expr) do
-    assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, {:literal_expr, expr}}}}
-    block = [assignment | block]
-    {state, block}
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_number(expr) do
+    {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
   end
 
-  def transpile_aux(state = %__MODULE__{}, expr, {target_expr, target_type}, block, _labels) when is_boolean(expr) do
-    assignment = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, expr}}}
-    block = [assignment | block]
-    {state, block}
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_boolean(expr) do
+    {state, maybe_assign_expr(expr, target, block)}
   end
 
   # Transpile a Scheme if expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = ["if", condition, consequent, alternate], {target_expr, target_type}, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = ["if", condition, consequent, alternate], target, block, labels) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, ccond_name} = gen_sym(state)
     ccond = {:symbol_expr, ccond_name}
     ccond_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
     block = [{:declaration_stmt, specifier(ccond_type), [{identifier(declarator(ccond_type), ccond_name), nil}]} | block]
     {state, block} = transpile_aux(state, condition, {ccond, ccond_type}, block, labels)
-    {state, cconsequent} = transpile_aux(state, consequent, {target_expr, target_type}, [], labels)
-    {state, calternate} = transpile_aux(state, alternate, {target_expr, target_type}, [], labels)
+    {state, cconsequent} = transpile_aux(state, consequent, target, [], labels)
+    {state, calternate} = transpile_aux(state, alternate, target, [], labels)
     ifstmt = {:if_stmt, ccond, Enum.reverse(cconsequent), Enum.reverse(calternate)}
     {state, [ifstmt | block]}
   end
 
   # Transpile a Scheme function expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = ["function", reference, parameters | expressions], {target_expr, target_type}, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = ["function", reference, parameters | expressions], target, block, labels) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     cparams = for param <- parameters, do: { "uintptr_t", {:identifier_declarator, param}}
     cfunc_decl = {:function_declarator, {:identifier_declarator, reference}, cparams}
-    cfunc_type = {:type_name, "uintptr_t", cfunc_decl}
+    cfunc_type = {:type_name, if target do "auto uintptr_t" else "extern uintptr_t" end, cfunc_decl}
     decl_stmt = {:declaration_stmt, specifier(cfunc_type), [{declarator(cfunc_type), nil}]}
     block = block ++ [decl_stmt]
     {state, cret_name} = gen_sym(state)
@@ -88,13 +92,12 @@ defmodule Anoma.LocalDomain.Transpile do
       end
     funbody = [{:return_stmt, cret} | funbody]
     function = {:function_stmt, specifier(cfunc_type), cfunc_decl, Enum.reverse(funbody)}
-    assign_addr = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, {:address_of_expr, {:symbol_expr, reference}}}}}
-    {state, [assign_addr | [function | block]]}
+    {state, maybe_assign_expr({:address_of_expr, {:symbol_expr, reference}}, target, [function | block])}
   end
 
   # Transpile a Scheme binary expression to C
-
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], {target_expr, target_type}, block, labels) when reference in ["+", "-", "/", "*", "<<", ">>", "==", "!=", "<", ">", "<=", ">=", "&", "|", "%"] do
+  
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when reference in ["+", "-", "/", "*", "<<", ">>", "==", "!=", "<", ">", "<=", ">=", "&", "|", "%"] do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -107,13 +110,12 @@ defmodule Anoma.LocalDomain.Transpile do
           {state, block, [carg | cargs]}
       end
     call = {:binary_expr, reference, Enum.at(cargs, 1), Enum.at(cargs, 0)}
-    assign_retval = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, call}}}
-    {state, [assign_retval | block]}
+    {state, maybe_assign_expr(call, target, block)}
   end
 
   # Transpile a Scheme procedure call expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], {target_expr, target_type}, block, labels) when is_binary(reference) do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when is_binary(reference) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -126,13 +128,12 @@ defmodule Anoma.LocalDomain.Transpile do
           {state, block, [carg | cargs]}
       end
     call = {:call_expr, {:symbol_expr, reference}, Enum.reverse(cargs)}
-    assign_retval = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, call}}}
-    {state, [assign_retval | block]}
+    {state, maybe_assign_expr(call, target, block)}
   end
 
   # Transpile a Scheme procedure call expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], {target_expr, target_type}, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, cref_name} = gen_sym(state)
     cref = {:symbol_expr, cref_name}
@@ -151,8 +152,7 @@ defmodule Anoma.LocalDomain.Transpile do
           {state, block, [carg | cargs]}
       end
     call = {:call_expr, cref, Enum.reverse(cargs)}
-    assign_retval = {:expr_stmt, {:binary_expr, "=", target_expr, {:cast_expr, target_type, call}}}
-    {state, [assign_retval | block]}
+    {state, maybe_assign_expr(call, target, block)}
   end
 
   def transpile(state = %__MODULE__{}, expr, target, block, labels) do
