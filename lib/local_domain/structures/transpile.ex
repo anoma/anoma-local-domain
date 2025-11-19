@@ -203,7 +203,7 @@ defmodule Anoma.LocalDomain.Transpile do
         for arg <- rest, reduce: str <> cexpr_to_string(arg0) do
           str -> str <> ", " <> cexpr_to_string(arg)
         end
-      [] -> ""
+      [] -> str
     end
     str <> ")"
   end
@@ -221,7 +221,7 @@ defmodule Anoma.LocalDomain.Transpile do
     case params do
       [{spec0, decl0} | rest] ->
         str = str <> spec0 <> " " <> declarator_to_string(decl0)
-        for {spec, decl} <- rest, reduce: str do
+        str = for {spec, decl} <- rest, reduce: str do
           str -> str <> ", " <> spec <> " " <> declarator_to_string(decl)
         end
         str <> ")"
