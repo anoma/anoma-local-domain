@@ -47,7 +47,7 @@ defmodule Anoma.LocalDomain.Transpile do
   # Transpile a Scheme expression to C
 
   def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_binary(expr) do
-    {state, maybe_assign_expr({:symbol_expr, expr}, target, block)}
+    {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
   end
 
   def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_number(expr) do
@@ -55,12 +55,16 @@ defmodule Anoma.LocalDomain.Transpile do
   end
 
   def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_boolean(expr) do
-    {state, maybe_assign_expr(expr, target, block)}
+    {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
+  end
+
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_atom(expr) do
+    {state, maybe_assign_expr({:symbol_expr, Atom.to_string(expr)}, target, block)}
   end
 
   # Transpile a Scheme if expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = ["if", condition, consequent, alternate], target, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [:if, condition, consequent, alternate], target, block, labels) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, ccond_name} = gen_sym(state)
     ccond = {:symbol_expr, ccond_name}
@@ -75,10 +79,10 @@ defmodule Anoma.LocalDomain.Transpile do
 
   # Transpile a Scheme function expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = ["function", reference, parameters | expressions], target, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [:function, reference, parameters | expressions], target, block, labels) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
-    cparams = for param <- parameters, do: { "uintptr_t", {:identifier_declarator, param}}
-    cfunc_decl = {:function_declarator, {:identifier_declarator, reference}, cparams}
+    cparams = for param <- parameters, do: { "uintptr_t", {:identifier_declarator, Atom.to_string(param)}}
+    cfunc_decl = {:function_declarator, {:identifier_declarator, Atom.to_string(reference)}, cparams}
     cfunc_type = {:type_name, if target do "auto uintptr_t" else "extern uintptr_t" end, cfunc_decl}
     decl_stmt = {:declaration_stmt, specifier(cfunc_type), [{declarator(cfunc_type), nil}]}
     block = block ++ [decl_stmt]
@@ -92,12 +96,12 @@ defmodule Anoma.LocalDomain.Transpile do
       end
     funbody = [{:return_stmt, cret} | funbody]
     function = {:function_stmt, specifier(cfunc_type), cfunc_decl, Enum.reverse(funbody)}
-    {state, maybe_assign_expr({:address_of_expr, {:symbol_expr, reference}}, target, [function | block])}
+    {state, maybe_assign_expr({:address_of_expr, {:symbol_expr, Atom.to_string(reference)}}, target, [function | block])}
   end
 
   # Transpile a Scheme binary expression to C
   
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when reference in ["+", "-", "/", "*", "<<", ">>", "==", "!=", "<", ">", "<=", ">=", "&", "|", "%"] do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when reference in [:+, :-, :/, :*, :"<<", :">>", :==, :!=, :<, :>, :<=, :>=, :&, :|, :%] do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -115,7 +119,7 @@ defmodule Anoma.LocalDomain.Transpile do
 
   # Transpile a Scheme procedure call expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when is_binary(reference) do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when is_atom(reference) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -127,7 +131,7 @@ defmodule Anoma.LocalDomain.Transpile do
           {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, labels)
           {state, block, [carg | cargs]}
       end
-    call = {:call_expr, {:symbol_expr, reference}, Enum.reverse(cargs)}
+    call = {:call_expr, {:symbol_expr, Atom.to_string(reference)}, Enum.reverse(cargs)}
     {state, maybe_assign_expr(call, target, block)}
   end
 
@@ -164,7 +168,9 @@ defmodule Anoma.LocalDomain.Transpile do
 
   def expr_to_string(value) when is_number(value), do: "#{value}"
 
-  def expr_to_string(value) when is_binary(value), do: "#{value}"
+  def expr_to_string(value) when is_binary(value), do: "\"#{value}\""
+
+  def expr_to_string(value) when is_atom(value), do: "#{value}"
 
   def expr_to_string([]), do: "()"
 
@@ -179,6 +185,10 @@ defmodule Anoma.LocalDomain.Transpile do
   # Convert C expression to string
 
   def cexpr_to_string({:literal_expr, value}) when is_number(value), do: "#{value}"
+
+  def cexpr_to_string({:literal_expr, value}) when is_boolean(value), do: "#{value}"
+
+  def cexpr_to_string({:literal_expr, value}) when is_binary(value), do: "\"#{value}\""
 
   def cexpr_to_string({:symbol_expr, value}) when is_binary(value), do: "#{value}"
 
