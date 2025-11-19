@@ -3,11 +3,70 @@ defmodule Anoma.LocalDomain.Transpile do
   
   typedstruct enforce: true do
     field(:counter, non_neg_integer())
-    field(:cprogram, list())
   end
 
   def new() do
-    %__MODULE__{ counter: 0, cprogram: [] }
+    %__MODULE__{ counter: 0 }
+  end
+
+  # Rename distinct variables to distinct names
+
+  def next_variable_suffix(""), do: 0
+
+  def next_variable_suffix(i), do: i + 1
+
+  def rename_variable(from, mapping, used, base, i \\ "") do
+    reference = String.to_atom("#{base}#{i}")
+    if MapSet.member?(used, reference) do
+      rename_variable(from, mapping, used, base, next_variable_suffix(i))
+    else
+      {reference, Map.put(mapping, from, reference), MapSet.put(used, reference)}
+    end
+  end
+
+  def rename_variable(from, mapping, used) do
+    base = String.replace(String.replace(Atom.to_string(from), "-", "_"), ".", "_")
+    rename_variable(from, mapping, used, base)
+  end
+
+  def rename_variables(expr, _mapping, used) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
+    {expr, used}
+  end
+
+  def rename_variables(expr, mapping, used) when is_atom(expr) do
+    {Map.get(mapping, expr, expr), used}
+  end
+
+  def rename_variables([:if, condition, consequent, alternate], mapping, used) do
+    {condition, used} = rename_variables(condition, mapping, used)
+    {consequent, used} = rename_variables(consequent, mapping, used)
+    {alternate, used} = rename_variables(alternate, mapping, used)
+    {[:if, condition, consequent, alternate], used}
+  end
+
+  def rename_variables([:function, reference, parameters | expressions], mapping, used) do
+    {reference, mapping, used} = rename_variable(reference, mapping, used)
+    {parameters, mapping, used} = for param <- parameters, reduce: {[], mapping, used} do
+      {new_parameters, mapping, used} ->
+        {param, mapping, used} = rename_variable(param, mapping, used)
+        {[param | new_parameters], mapping, used}
+    end
+    {expressions, used} = for expr <- expressions, reduce: {[], used} do
+      {new_expressions, used} ->
+        {expr, used} = rename_variables(expr, mapping, used)
+        {[expr | new_expressions], used}
+    end
+    {[:function, reference, Enum.reverse(parameters) | Enum.reverse(expressions)], used}
+  end
+
+  def rename_variables([reference | arguments], mapping, used) do
+    {reference, used} = rename_variables(reference, mapping, used)
+    {arguments, used} = for arg <- arguments, reduce: {[], used} do
+      {new_arguments, used} ->
+        {arg, used} = rename_variables(arg, mapping, used)
+        {[arg | new_arguments], used}
+    end
+    {[reference | Enum.reverse(arguments)], used}
   end
 
   # Generate a new symbol
@@ -46,15 +105,7 @@ defmodule Anoma.LocalDomain.Transpile do
 
   # Transpile a Scheme expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_binary(expr) do
-    {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
-  end
-
-  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_number(expr) do
-    {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
-  end
-
-  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_boolean(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
     {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
   end
 
@@ -160,6 +211,8 @@ defmodule Anoma.LocalDomain.Transpile do
   end
 
   def transpile(state = %__MODULE__{}, expr, target, block, labels) do
+    used = MapSet.new([:return, :if, :switch, :case, :int, :float, :void, :goto, :break, :for, :while])
+    {expr, _} = rename_variables(expr, %{}, used)
     {state, block} = transpile_aux(state, expr, target, block, labels)
     {state, Enum.reverse(block)}
   end
