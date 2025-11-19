@@ -7,12 +7,12 @@ defmodule Examples.ETranspile do
   def transpile_factorial() do
     state = Transpile.new()
     {state, block} = Transpile.transpile(state,
-      ["function", "main", [],
-       ["function", "factorial", ["n"],
-        ["if", ["==", "n", 0],
+      [:function, :main, [],
+       [:function, :factorial, [:n],
+        [:if, [:==, :n, 0],
          1,
-         ["*", "n", ["factorial", ["-", "n", 1]]]]],
-       ["factorial", 5]],
+         [:*, :n, [:factorial, [:-, :n, 1]]]]],
+       [:factorial, 5]],
       {{:literal_expr, 120}, {:type_name, "uintptr_t", {:identifier_declarator, ""}}},
       [],
       [])
