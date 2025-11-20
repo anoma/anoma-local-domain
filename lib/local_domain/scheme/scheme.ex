@@ -90,8 +90,8 @@ defmodule Anoma.LocalDomain.Scheme do
     |> Map.new()
   end
 
-  def eval({"closure", params, body}, _env) do
-    {"closure", params, body}
+  def eval({"closure", closure}, _env) do
+    {"closure", closure}
   end
 
   def eval({"native", module, functor}, _env) do
@@ -154,7 +154,19 @@ defmodule Anoma.LocalDomain.Scheme do
         end
 
       "lambda" ->
-        {"closure", hd(args), Enum.at(args, 1)}
+        params = hd(args)
+        body = Enum.at(args, 1)
+        closure = fn args ->
+          env =
+            Enum.reduce(Enum.zip(params, args), env, fn {param,
+                                                             arg},
+                                                            acc ->
+              Map.put(acc, param, arg)
+            end)
+
+          eval(body, env)
+        end
+        {"closure", closure}
 
       "apply" ->
         [op, args] = args
@@ -162,15 +174,8 @@ defmodule Anoma.LocalDomain.Scheme do
         args = eval(args, env)
 
         case eval(op, env) do
-          {"closure", params, body} ->
-            env =
-              Enum.reduce(Enum.zip(params, tl(args)), env, fn {param,
-                                                               arg},
-                                                              acc ->
-                Map.put(acc, param, arg)
-              end)
-
-            eval(body, env)
+          {"closure", closure} ->
+            closure.(tl(args))
 
           {"native", module, functor} ->
             apply(module, functor, tl(args))
