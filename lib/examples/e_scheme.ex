@@ -40,6 +40,13 @@ defmodule Examples.EScheme do
     result
   end
 
+  def lexical_scoping() do
+    expr = [[["lambda", ["x"], ["lambda", [], "x"]], 3141592]]
+    result = Scheme.eval(expr)
+    assert result == 3141592
+    result
+  end
+
   def map() do
     expr = ["map", list(), lambda()]
     result = Scheme.eval(expr)
