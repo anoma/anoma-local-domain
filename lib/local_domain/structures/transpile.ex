@@ -69,6 +69,12 @@ defmodule Anoma.LocalDomain.Transpile do
     {[reference | Enum.reverse(arguments)], used}
   end
 
+  # A variation of Enum.reduce that supplies tails to the function
+
+  def tails(list = [_hd | tl], acc, f), do: tails(tl, f.(list, acc), f)
+
+  def tails([], acc, _f), do: acc
+
   # Generate a new symbol
 
   def gen_sym(state = %__MODULE__{}) do
@@ -105,54 +111,51 @@ defmodule Anoma.LocalDomain.Transpile do
 
   # Transpile a Scheme expression to C
 
-  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _tails) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
     {state, maybe_assign_expr({:literal_expr, expr}, target, block)}
   end
 
-  def transpile_aux(state = %__MODULE__{}, expr, target, block, _labels) when is_atom(expr) do
+  def transpile_aux(state = %__MODULE__{}, expr, target, block, _tails) when is_atom(expr) do
     {state, maybe_assign_expr({:symbol_expr, Atom.to_string(expr)}, target, block)}
   end
 
-  # Transpile a Scheme if expression to C
-
-  def transpile_aux(state = %__MODULE__{}, expr = [:if, condition, consequent, alternate], target, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [:if, condition, consequent, alternate], target, block, tails) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, ccond_name} = gen_sym(state)
     ccond = {:symbol_expr, ccond_name}
     ccond_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
     block = [{:declaration_stmt, specifier(ccond_type), [{identifier(declarator(ccond_type), ccond_name), nil}]} | block]
-    {state, block} = transpile_aux(state, condition, {ccond, ccond_type}, block, labels)
-    {state, cconsequent} = transpile_aux(state, consequent, target, [], labels)
-    {state, calternate} = transpile_aux(state, alternate, target, [], labels)
+    {state, block} = transpile_aux(state, condition, {ccond, ccond_type}, block, %{})
+    {state, cconsequent} = transpile_aux(state, consequent, target, [], tails)
+    {state, calternate} = transpile_aux(state, alternate, target, [], tails)
     ifstmt = {:if_stmt, ccond, Enum.reverse(cconsequent), Enum.reverse(calternate)}
     {state, [ifstmt | block]}
   end
 
-  # Transpile a Scheme function expression to C
-
-  def transpile_aux(state = %__MODULE__{}, expr = [:function, reference, parameters | expressions], target, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [:function, reference, parameters | expressions], target, block, tails) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     cparams = for param <- parameters, do: { "uintptr_t", {:identifier_declarator, Atom.to_string(param)}}
     cfunc_decl = {:function_declarator, {:identifier_declarator, Atom.to_string(reference)}, cparams}
     cfunc_type = {:type_name, if target do "auto uintptr_t" else "extern uintptr_t" end, cfunc_decl}
     decl_stmt = {:declaration_stmt, specifier(cfunc_type), [{declarator(cfunc_type), nil}]}
     block = block ++ [decl_stmt]
+    {state, cfunc_label} = gen_sym(state)
+    funbody = [{:label_stmt, cfunc_label}]
     {state, cret_name} = gen_sym(state)
     cret_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
     cret = {:symbol_expr, cret_name}
-    funbody = [{:declaration_stmt, specifier(cret_type), [{identifier(declarator(cret_type), cret_name), nil}]}]
-    {state, funbody} =
-      for expression <- expressions, reduce: {state, funbody} do
-        {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, labels)
-      end
+    funbody = [{:declaration_stmt, specifier(cret_type), [{identifier(declarator(cret_type), cret_name), nil}]} | funbody]
+    {state, funbody} = tails(expressions, {state, funbody}, fn
+      [expression], {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, Map.put(tails, reference, {cfunc_label, parameters}))
+      [expression | _], {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, %{})
+    end)
     funbody = [{:return_stmt, cret} | funbody]
-    function = {:function_stmt, specifier(cfunc_type), cfunc_decl, Enum.reverse(funbody)}
+    funbody = [{:declaration_stmt, "__label__", [{{:identifier_declarator, cfunc_label}, nil}]} | Enum.reverse(funbody)]
+    function = {:function_stmt, specifier(cfunc_type), cfunc_decl, funbody}
     {state, maybe_assign_expr({:address_of_expr, {:symbol_expr, Atom.to_string(reference)}}, target, [function | block])}
   end
-
-  # Transpile a Scheme binary expression to C
   
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when reference in [:+, :-, :/, :*, :"<<", :">>", :==, :!=, :<, :>, :<=, :>=, :&, :|, :%] do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, _tails) when reference in [:+, :-, :/, :*, :"<<", :">>", :==, :!=, :<, :>, :<=, :>=, :&, :|, :%] do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -161,16 +164,14 @@ defmodule Anoma.LocalDomain.Transpile do
           carg_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
           block = [{:declaration_stmt, specifier(carg_type), [{identifier(declarator(carg_type), carg_name), nil}]} | block]
           carg = {:symbol_expr, carg_name}
-          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, labels)
+          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, %{})
           {state, block, [carg | cargs]}
       end
     call = {:binary_expr, reference, Enum.at(cargs, 1), Enum.at(cargs, 0)}
     {state, maybe_assign_expr(call, target, block)}
   end
 
-  # Transpile a Scheme procedure call expression to C
-
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) when is_atom(reference) do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, tails) when is_atom(reference) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
@@ -179,23 +180,29 @@ defmodule Anoma.LocalDomain.Transpile do
           carg_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
           block = [{:declaration_stmt, specifier(carg_type), [{identifier(declarator(carg_type), carg_name), nil}]} | block]
           carg = {:symbol_expr, carg_name}
-          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, labels)
+          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, %{})
           {state, block, [carg | cargs]}
       end
-    call = {:call_expr, {:symbol_expr, Atom.to_string(reference)}, Enum.reverse(cargs)}
-    {state, maybe_assign_expr(call, target, block)}
+    case Map.get(tails, reference) do
+      {target, params} ->
+        block = for {param, arg} <- Enum.zip(params, Enum.reverse(cargs)), reduce: block do
+          block -> [{:expr_stmt, {:binary_expr, "=", {:symbol_expr, Atom.to_string(param)}, arg}} | block]
+        end
+        {state, [{:goto_stmt, target} | block]}
+      _ ->
+        call = {:call_expr, {:symbol_expr, Atom.to_string(reference)}, Enum.reverse(cargs)}
+        {state, maybe_assign_expr(call, target, block)}
+    end
   end
 
-  # Transpile a Scheme procedure call expression to C
-
-  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, labels) do
+  def transpile_aux(state = %__MODULE__{}, expr = [reference | arguments], target, block, _tails) do
     block = [{:comment_stmt, expr_to_string(expr)} | block]
     {state, cref_name} = gen_sym(state)
     cref = {:symbol_expr, cref_name}
     params = for _ <- arguments, do: {"uintptr_t", {:identifier_declarator, ""}}
     cref_type = {:type_name, "uintptr_t", {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, params}}
     block = [{:declaration_stmt, specifier(cref_type), [{identifier(declarator(cref_type), cref_name), nil}]} | block]
-    {state, block} = transpile_aux(state, reference, {cref, cref_type}, block, labels)
+    {state, block} = transpile_aux(state, reference, {cref, cref_type}, block, %{})
     {state, block, cargs} =
       for arg <- arguments, reduce: {state, block, []} do
         {state, block, cargs} ->
@@ -203,17 +210,17 @@ defmodule Anoma.LocalDomain.Transpile do
           carg_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
           block = [{:declaration_stmt, specifier(carg_type), [{identifier(declarator(carg_type), carg_name), nil}]} | block]
           carg = {:symbol_expr, carg_name}
-          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, labels)
+          {state, block} = transpile_aux(state, arg, {carg, carg_type}, block, %{})
           {state, block, [carg | cargs]}
       end
     call = {:call_expr, cref, Enum.reverse(cargs)}
     {state, maybe_assign_expr(call, target, block)}
   end
 
-  def transpile(state = %__MODULE__{}, expr, target, block, labels) do
+  def transpile(state = %__MODULE__{}, expr, target \\ nil, block \\ [], tails \\ %{}) do
     used = MapSet.new([:return, :if, :switch, :case, :int, :float, :void, :goto, :break, :for, :while])
     {expr, _} = rename_variables(expr, %{}, used)
-    {state, block} = transpile_aux(state, expr, target, block, labels)
+    {state, block} = transpile_aux(state, expr, target, block, tails)
     {state, Enum.reverse(block)}
   end
 
