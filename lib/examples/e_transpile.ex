@@ -13,9 +13,7 @@ defmodule Examples.ETranspile do
          1,
          [:*, :n, [:factorial, [:-, :n, 1]]]]],
        [:factorial, 5]],
-      {{:literal_expr, 120}, {:type_name, "uintptr_t", {:identifier_declarator, ""}}},
-      [],
-      [])
+      {{:literal_expr, 120}, {:type_name, "uintptr_t", {:identifier_declarator, ""}}})
     {:expr_stmt,
      {:binary_expr, binary_op, {:literal_expr, expected_result},
       {:cast_expr, {:type_name, result_type, _},
