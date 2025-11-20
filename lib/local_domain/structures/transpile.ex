@@ -145,8 +145,9 @@ defmodule Anoma.LocalDomain.Transpile do
     cret_type = {:type_name, "uintptr_t", {:identifier_declarator, ""}}
     cret = {:symbol_expr, cret_name}
     funbody = [{:declaration_stmt, specifier(cret_type), [{identifier(declarator(cret_type), cret_name), nil}]} | funbody]
+    tails = Map.put(tails, reference, {cfunc_label, parameters})
     {state, funbody} = tails(expressions, {state, funbody}, fn
-      [expression], {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, Map.put(tails, reference, {cfunc_label, parameters}))
+      [expression], {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, tails)
       [expression | _], {state, funbody} -> transpile_aux(state, expression, {cret, cret_type}, funbody, %{})
     end)
     funbody = [{:return_stmt, cret} | funbody]
