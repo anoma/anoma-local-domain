@@ -29,6 +29,15 @@ defmodule Anoma.LocalDomain.Transpile do
     rename_variable(from, mapping, used, base)
   end
 
+  def rename_variables_aux(expressions, mapping, used) do
+    {expressions, used} = for expr <- expressions, reduce: {[], used} do
+      {new_expressions, used} ->
+        {expr, used} = rename_variables(expr, mapping, used)
+        {[expr | new_expressions], used}
+    end
+    {Enum.reverse(expressions), used}
+  end
+
   def rename_variables(expr, _mapping, used) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
     {expr, used}
   end
@@ -51,22 +60,14 @@ defmodule Anoma.LocalDomain.Transpile do
         {param, mapping, used} = rename_variable(param, mapping, used)
         {[param | new_parameters], mapping, used}
     end
-    {expressions, used} = for expr <- expressions, reduce: {[], used} do
-      {new_expressions, used} ->
-        {expr, used} = rename_variables(expr, mapping, used)
-        {[expr | new_expressions], used}
-    end
-    {[:function, reference, Enum.reverse(parameters) | Enum.reverse(expressions)], used}
+    {expressions, used} = rename_variables_aux(expressions, mapping, used)
+    {[:function, reference, Enum.reverse(parameters) | expressions], used}
   end
 
   def rename_variables([reference | arguments], mapping, used) do
     {reference, used} = rename_variables(reference, mapping, used)
-    {arguments, used} = for arg <- arguments, reduce: {[], used} do
-      {new_arguments, used} ->
-        {arg, used} = rename_variables(arg, mapping, used)
-        {[arg | new_arguments], used}
-    end
-    {[reference | Enum.reverse(arguments)], used}
+    {arguments, used} = rename_variables_aux(arguments, mapping, used)
+    {[reference | arguments], used}
   end
 
   # A variation of Enum.reduce that supplies tails to the function
