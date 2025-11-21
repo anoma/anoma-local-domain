@@ -141,9 +141,19 @@ defmodule Examples.ETranspile do
       [[:function, :is_odd, [:n],
         [:function, :is_even, [:n],
           [:if, [:==, :n, 0], true, [:is_odd, [:-, :n, 1]]]],
-        [:if, [:==, :n, 0], false, [:is_even, [:-, :n, 1]]],],
+        [:if, [:==, :n, 0], false, [:is_even, [:-, :n, 1]]]],
       [:function, :scm_main, [],
         [:commit_sexpr, [:cons, [:integer, [:is_odd, 11]], [:cons, [:integer, [:is_odd, 12]], [:integer, [:is_odd, 14]]]]]]])
+    {state, block, Transpile.program_to_string(block)}
+  end
+
+  # let input = Sexpr::from((0..100).map(|x| Sexpr::from(2 * x + 1)).collect::<Vec::<_>>());
+  # let output: Sexpr = receipt.journal.decode().unwrap();
+  def transpile_string_literals() do
+    state = Transpile.new()
+    {state, block} = Transpile.transpile(state,
+      [[:function, :scm_main, [],
+        [:commit_sexpr, [:panic, "this program is not going to complete"]]]])
     {state, block, Transpile.program_to_string(block)}
   end
 end
