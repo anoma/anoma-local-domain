@@ -15,59 +15,66 @@ defmodule Anoma.LocalDomain.Transpile do
 
   def next_variable_suffix(i), do: i + 1
 
-  def rename_variable(from, mapping, used, base, i \\ "") do
+  def rename_variable(from, {mapping, used}, base, i \\ "") do
     reference = String.to_atom("#{base}#{i}")
     if MapSet.member?(used, reference) do
-      rename_variable(from, mapping, used, base, next_variable_suffix(i))
+      rename_variable(from, {mapping, used}, base, next_variable_suffix(i))
     else
-      {reference, Map.put(mapping, from, reference), MapSet.put(used, reference)}
+      {reference, {Map.put(mapping, from, reference), MapSet.put(used, reference)}}
     end
   end
 
-  def rename_variable(from, mapping, used) do
+  def rename_variable(from, acc) do
     base = String.replace(String.replace(Atom.to_string(from), "-", "_"), ".", "_")
-    rename_variable(from, mapping, used, base)
+    rename_variable(from, acc, base)
   end
 
-  def rename_variables_aux(expressions, mapping, used) do
-    {expressions, used} = for expr <- expressions, reduce: {[], used} do
-      {new_expressions, used} ->
-        {expr, used} = rename_variables(expr, mapping, used)
-        {[expr | new_expressions], used}
-    end
-    {Enum.reverse(expressions), used}
+  # Do not rename a function if it is used as an internal definition
+
+  def rename_body(expr = [:function, reference, _ | _], {mapping, used}) do
+    rename_variables(expr, {mapping, MapSet.delete(used, reference)})
   end
 
-  def rename_variables(expr, _mapping, used) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
-    {expr, used}
+  def rename_body(expr, acc), do: rename_variables(expr, acc)
+
+  # Rename functions that are used as internal definitions ahead of time
+
+  def rename_function([:function, reference, params | body], acc) do
+    {reference, acc} = rename_variable(reference, acc)
+    {[:function, reference, params | body], acc}
   end
 
-  def rename_variables(expr, mapping, used) when is_atom(expr) do
-    {Map.get(mapping, expr, expr), used}
+  def rename_function(expr, acc), do: {expr, acc}
+
+  # Rename variables in the expression so that distinct instances have different names
+
+  def rename_variables(expr, acc) when is_binary(expr) or is_number(expr) or is_boolean(expr) do
+    {expr, acc}
   end
 
-  def rename_variables([:if, condition, consequent, alternate], mapping, used) do
-    {condition, used} = rename_variables(condition, mapping, used)
-    {consequent, used} = rename_variables(consequent, mapping, used)
-    {alternate, used} = rename_variables(alternate, mapping, used)
-    {[:if, condition, consequent, alternate], used}
+  def rename_variables(expr, acc = {mapping, _used}) when is_atom(expr) do
+    {Map.get(mapping, expr, expr), acc}
   end
 
-  def rename_variables([:function, reference, parameters | expressions], mapping, used) do
-    {reference, mapping, used} = rename_variable(reference, mapping, used)
-    {parameters, mapping, used} = for param <- parameters, reduce: {[], mapping, used} do
-      {new_parameters, mapping, used} ->
-        {param, mapping, used} = rename_variable(param, mapping, used)
-        {[param | new_parameters], mapping, used}
-    end
-    {expressions, used} = rename_variables_aux(expressions, mapping, used)
-    {[:function, reference, Enum.reverse(parameters) | expressions], used}
+  def rename_variables([:if, condition, consequent, alternate], acc) do
+    {condition, acc} = rename_variables(condition, acc)
+    {consequent, acc} = rename_variables(consequent, acc)
+    {alternate, acc} = rename_variables(alternate, acc)
+    {[:if, condition, consequent, alternate], acc}
   end
 
-  def rename_variables([reference | arguments], mapping, used) do
-    {reference, used} = rename_variables(reference, mapping, used)
-    {arguments, used} = rename_variables_aux(arguments, mapping, used)
-    {[reference | arguments], used}
+  def rename_variables([:function, reference, parameters | expressions], acc = {mapping, _}) do
+    {reference, acc} = rename_variable(reference, acc)
+    {parameters, inner_acc} = Enum.map_reduce(parameters, acc, &rename_variable/2)
+    {expressions, inner_acc} = Enum.map_reduce(expressions, inner_acc, &rename_function/2)
+    {expressions, {_, used}} = Enum.map_reduce(expressions, inner_acc, &rename_body/2)
+    {[:function, reference, parameters | expressions], {mapping, used}}
+  end
+
+  def rename_variables([reference | arguments], acc) do
+    {reference, acc} = rename_variables(reference, acc)
+    {arguments, acc} = Enum.map_reduce(arguments, acc, &rename_variables/2)
+    {[reference | arguments], acc}
   end
 
   # A variation of Enum.reduce that supplies tails to the function
@@ -223,11 +230,10 @@ defmodule Anoma.LocalDomain.Transpile do
 
   def transpile(state = %__MODULE__{}, exprs, block \\ [], tails \\ %{}) do
     used = MapSet.new([:return, :if, :switch, :case, :int, :float, :void, :goto, :break, :for, :while, :include, :double, :do, :continue])
-    {state, block, _used} = for expr <- exprs, reduce: {state, block, used} do
-      {state, block, used} ->
-        {expr, used} = rename_variables(expr, %{}, used)
-        {state, block} = transpile_aux(state, expr, nil, block, tails)
-        {state, block, used}
+    {exprs, acc} = Enum.map_reduce(exprs, {%{}, used}, &rename_function/2)
+    {exprs, _acc} = Enum.map_reduce(exprs, acc, &rename_body/2)
+    {state, block} = for expr <- exprs, reduce: {state, block} do
+      {state, block} -> transpile_aux(state, expr, nil, block, tails)
     end
     {state, Enum.reverse(block)}
   end
