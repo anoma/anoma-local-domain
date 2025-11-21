@@ -192,7 +192,9 @@ defmodule Anoma.LocalDomain.Transpile do
         end
         {state, [{:goto_stmt, target} | block]}
       _ ->
-        call = {:call_expr, {:symbol_expr, Atom.to_string(reference)}, Enum.reverse(cargs)}
+        params = for _ <- arguments, do: {"uintptr_t", {:identifier_declarator, ""}}
+        cref_type = {:type_name, "uintptr_t", {:function_declarator, {:pointer_declarator, {:identifier_declarator, ""}}, params}}
+        call = {:call_expr, {:cast_expr, cref_type, {:symbol_expr, Atom.to_string(reference)}}, Enum.reverse(cargs)}
         {state, maybe_assign_expr(call, target, block)}
     end
   end
@@ -219,10 +221,14 @@ defmodule Anoma.LocalDomain.Transpile do
     {state, maybe_assign_expr(call, target, block)}
   end
 
-  def transpile(state = %__MODULE__{}, expr, target \\ nil, block \\ [], tails \\ %{}) do
-    used = MapSet.new([:return, :if, :switch, :case, :int, :float, :void, :goto, :break, :for, :while])
-    {expr, _} = rename_variables(expr, %{}, used)
-    {state, block} = transpile_aux(state, expr, target, block, tails)
+  def transpile(state = %__MODULE__{}, exprs, block \\ [], tails \\ %{}) do
+    used = MapSet.new([:return, :if, :switch, :case, :int, :float, :void, :goto, :break, :for, :while, :include, :double, :do, :continue])
+    {state, block, _used} = for expr <- exprs, reduce: {state, block, used} do
+      {state, block, used} ->
+        {expr, used} = rename_variables(expr, %{}, used)
+        {state, block} = transpile_aux(state, expr, nil, block, tails)
+        {state, block, used}
+    end
     {state, Enum.reverse(block)}
   end
 
@@ -265,7 +271,7 @@ defmodule Anoma.LocalDomain.Transpile do
   def cexpr_to_string({:subscript_expr, expr1, expr2}), do: "#{cexpr_to_string(expr1)}[#{cexpr_to_string(expr2)}]"
 
   def cexpr_to_string({:cast_expr, typename, expr}) do
-    "(#{specifier(typename)} #{declarator_to_string(declarator(typename))}) #{cexpr_to_string(expr)}"
+    "((#{specifier(typename)} #{declarator_to_string(declarator(typename))}) #{cexpr_to_string(expr)})"
   end
 
   def cexpr_to_string({:call_expr, reference, args}) do
