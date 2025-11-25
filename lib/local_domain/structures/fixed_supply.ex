@@ -39,14 +39,8 @@ defmodule Anoma.LocalDomain.FixedSupply do
         ),
         0
       )
-    ) ->
-      "fixed_supply_holds"
+    )
   end
-
-  defscheme(
-    fixed_supply_holds(obj, instance, using),
-    &Anoma.LocalDomain.FixedSupply.fixed_supply_holds/3
-  )
 
   def make_fixed_supply(q) do
     %__MODULE__{
@@ -85,7 +79,10 @@ defimpl Anoma.LocalDomain.ObjToResource,
   end
 
   def scheme(data) do
-    %{quantity: data.quantity, supply_quantity: data.supply_quantity}
+    %{
+      "quantity" => data.quantity,
+      "supply_quantity" => data.supply_quantity
+    }
   end
 
   def related_use(data) do

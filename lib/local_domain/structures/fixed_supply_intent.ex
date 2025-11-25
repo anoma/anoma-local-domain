@@ -54,8 +54,8 @@ defimpl Anoma.LocalDomain.ObjToResource,
 
   def scheme(data) do
     %{
-      quantity: data.quantity,
-      should_create: data.should_create
+      "quantity" => data.quantity,
+      "should_create" => data.should_create
     }
   end
 
