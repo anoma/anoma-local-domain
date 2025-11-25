@@ -10,7 +10,7 @@ defmodule SchemeTest do
     Examples.EScheme.lambda()
     Examples.EScheme.apply()
     Examples.EScheme.native_plus()
-    Examples.EScheme.native_nth()
+    Examples.EScheme.native_at()
     Examples.EScheme.map()
     Examples.EScheme.apply_map()
     Examples.EScheme.filter()

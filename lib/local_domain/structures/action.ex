@@ -112,14 +112,14 @@ defmodule Anoma.LocalDomain.Action do
         created: created
       }) do
     %{
-      consumed: [
-        "list"
+      "consumed" => [
+        :list
         | Enum.map(consumed, fn c ->
             Anoma.LocalDomain.ObjToResource.scheme(c)
           end)
       ],
-      created: [
-        "list"
+      "created" => [
+        :list
         | Enum.map(created, fn c ->
             Anoma.LocalDomain.ObjToResource.scheme(c)
           end)

@@ -94,11 +94,10 @@ defimpl Anoma.LocalDomain.ObjToResource, for: Function do
   end
 
   def scheme(data) do
-    {:module, mod} = Function.info(data, :module)
+    {:module, _mod} = Function.info(data, :module)
     {:name, name} = Function.info(data, :name)
 
-    func = Anoma.LocalDomain.Scheme.elixir_fn_to_scheme(mod, name)
-    func
+    name
   end
 
   def related_use(_data) do
@@ -123,10 +122,10 @@ defimpl Anoma.LocalDomain.ObjToResource, for: Anoma.LocalDomain.Resource do
 
   def scheme(x) do
     %{
-      data: Anoma.LocalDomain.ObjToResource.scheme(x.data),
-      logic: Anoma.LocalDomain.Scheme.ast_to_scheme(x.logic),
-      quantity: x.quantity,
-      type: x.type
+      "data" => Anoma.LocalDomain.ObjToResource.scheme(x.data),
+      "logic" => Anoma.LocalDomain.Scheme.ast_to_scheme(x.logic),
+      "quantity" => x.quantity,
+      "type" => Atom.to_string(x.type)
     }
   end
 
