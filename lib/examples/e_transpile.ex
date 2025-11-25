@@ -156,4 +156,24 @@ defmodule Examples.ETranspile do
         [:commit_sexpr, [:panic, "this program is not going to complete"]]]])
     {state, block, Transpile.program_to_string(block)}
   end
+
+  # let input = Sexpr::from((0..100).map(|x| Sexpr::from(2 * x + 1)).collect::<Vec::<_>>());
+  # let output: Sexpr = receipt.journal.decode().unwrap();
+  def transpile_get() do
+    state = Transpile.new()
+    {state, block} = Transpile.transpile(state,
+      [[:function, :scm_main, [],
+        [:commit_sexpr, [:get, [:read_sexpr], :car_field]]]])
+    {state, block, Transpile.program_to_string(block)}
+  end
+
+  # let input = Sexpr::from((0..100).map(|x| Sexpr::from(2 * x + 1)).collect::<Vec::<_>>());
+  # let output: Sexpr = receipt.journal.decode().unwrap();
+  def transpile_put() do
+    state = Transpile.new()
+    {state, block} = Transpile.transpile(state,
+      [[:function, :scm_main, [],
+        [:commit_sexpr, [:put, [:get, [:read_sexpr], :cdr_field], :car_field, [:integer, 24]]]]])
+    {state, block, Transpile.program_to_string(block)}
+  end
 end
