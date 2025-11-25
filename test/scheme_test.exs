@@ -1,8 +1,12 @@
 defmodule SchemeTest do
+  alias Anoma.LocalDomain.SchemeRegistry
   use ExUnit.Case
   doctest Anoma.LocalDomain.Scheme
 
   # Examples.EScheme.__after_compile__([], [])
+
+  SchemeRegistry.register(Anoma.LocalDomain.Scheme.Std)
+  SchemeRegistry.register(Examples.EScheme)
 
   test "Run the examples" do
     Examples.EScheme.list()

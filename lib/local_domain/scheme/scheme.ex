@@ -9,10 +9,6 @@ defmodule Anoma.LocalDomain.Scheme do
         accumulate: true
       )
 
-      Module.register_attribute(__MODULE__, :elixir_fns,
-        accumulate: true
-      )
-
       import Anoma.LocalDomain.Scheme
       @before_compile unquote(__MODULE__)
     end
@@ -21,22 +17,18 @@ defmodule Anoma.LocalDomain.Scheme do
   defmacro __before_compile__(env) do
     module = env.module
     scheme_fns = Module.get_attribute(module, :scheme_fns)
-    elixir_fns = Module.get_attribute(module, :elixir_fns)
 
     quote do
       def __scheme_fns__ do
-        unquote(Macro.escape(scheme_fns))
-      end
-
-      def __elixir_fns__ do
-        unquote(Macro.escape(elixir_fns))
+        unquote(Enum.reverse(Macro.escape(scheme_fns)))
       end
 
       # This doesn't work first compilation, only recompilation
-      @after_compile __MODULE__
-      def __after_compile__(_env, _bytecode) do
-        Anoma.LocalDomain.SchemeRegistry.register(unquote(module))
-      end
+      # Also if we care about registration order (we do) we shouldn't do post-compiles
+      # @after_compile __MODULE__
+      # def __after_compile__(_env, _bytecode) do
+      #   Anoma.LocalDomain.SchemeRegistry.register(unquote(module))
+      # end
     end
   end
 
@@ -53,8 +45,10 @@ defmodule Anoma.LocalDomain.Scheme do
         unquote(body_elixir)
       end
 
-      @elixir_fns {unquote(name), unquote(args_scheme),
-                   unquote(Macro.escape(body_elixir))}
+      @scheme_fns {unquote(name), unquote(args_scheme),
+                   unquote(
+                     Anoma.LocalDomain.Scheme.ast_to_scheme(body_elixir)
+                   )}
     end
   end
 
@@ -174,7 +168,7 @@ defmodule Anoma.LocalDomain.Scheme do
         end
 
       :lambda ->
-        {:closure, hd(args), Enum.at(args, 1)}
+        {:closure, hd(args), Enum.at(args, 1), env}
 
       :apply ->
         [op, args] = args
@@ -182,16 +176,24 @@ defmodule Anoma.LocalDomain.Scheme do
         args = eval(args, env)
 
         case eval(op, env) do
-          {:closure, params, body} ->
-            env =
-              Enum.reduce(Enum.zip(params, tl(args)), env, fn {param,
-                                                               arg},
-                                                              acc ->
-                Map.put(acc, param, arg)
-              end)
+          {:closure, params, body, closure_env} ->
+            call_env =
+              Enum.reduce(
+                Enum.zip(params, tl(args)),
+                closure_env,
+                fn {param, arg}, acc ->
+                  Map.put(acc, param, arg)
+                end
+              )
 
-            # require IEx; IEx.pry
-            eval(body, env)
+            eval(
+              body,
+              Map.put(
+                call_env,
+                :self,
+                {:closure, params, body, closure_env}
+              )
+            )
 
           {:native, module, functor} ->
             apply(module, functor, tl(args))
@@ -207,10 +209,6 @@ defmodule Anoma.LocalDomain.Scheme do
 
   def eval(expr) do
     eval(expr, default_env())
-  end
-
-  def ast_to_scheme(args, ast) do
-    {:closure, args, ast_to_scheme(ast)}
   end
 
   def ast_to_scheme(n) when is_integer(n) do
