@@ -76,12 +76,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
       ) do
     {env, closure_env_id} = Anoma.LocalDomain.Scheme.reserve_env(state.scheme)
     closure = {:closure, args_scheme, body_scheme, closure_env_id}
-    env = Anoma.LocalDomain.Scheme.insert_env(env, closure_env_id, :self, closure)
-    {:noreply,
-     %__MODULE__{
-       state
-       | scheme: Anoma.LocalDomain.Scheme.put_env(env, name_scheme, closure)
-     }}
+    env = Anoma.LocalDomain.Scheme.insert_env(env, closure_env_id, name_scheme, closure)
+    {:noreply, %__MODULE__{state | scheme: env}}
   end
 
   @impl true
