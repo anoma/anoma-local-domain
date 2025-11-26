@@ -88,7 +88,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
            Map.put(
              state.scheme,
              name_scheme,
-             {:closure, args_scheme, body_scheme, state.scheme}
+             {:closure, args_scheme, body_scheme, Anoma.LocalDomain.Scheme.map_to_env(state.scheme)}
            )
      }}
   end

@@ -64,10 +64,53 @@ defmodule Anoma.LocalDomain.Scheme do
   def default_env(extra \\ %{}) do
     {:ok, scheme_fns} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
 
-    Map.merge(
+    map_to_env(Map.merge(
       scheme_fns,
       extra
-    )
+    ))
+  end
+
+  def new_env(), do: {%{}, 0, 1}
+
+  # Put the given binding into the environment
+
+  def put_env({tree, index, next}, name, value) do
+    {Map.put(tree, next, {name, value, index}), next, next+1}
+  end
+
+  # Get the value of the given identifier in the environment
+
+  def get_env({tree, index, next}, search_name) do
+    {name, value, parent} = Map.fetch!(tree, index)
+    if name == search_name do
+      value
+    else
+      get_env({tree, parent, next}, search_name)
+    end
+  end
+
+  # Get the unique identifier for the given environment
+
+  def env_id({tree, index, next}), do: index
+
+  # Reserve a unique environment identifier to filled later
+
+  def reserve_env({tree, index, next}) do
+    {{tree, index, next+1}, next}
+  end
+
+  # Insert the given binding at the given unique identifier
+
+  def insert_env({tree, index, next}, at, name, value) do
+    {Map.put(tree, at, {name, value, index}), at, next}
+  end
+
+  # Convert an ordinary Elixir map into an environment
+
+  def map_to_env(map) do
+    Enum.reduce(map, new_env(), fn {name, value}, acc ->
+      put_env(acc, name, value)
+    end)
   end
 
   def eval(num, _env) when is_number(num) do
@@ -91,7 +134,7 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def eval(var, env) when is_atom(var) do
-    Map.fetch!(env, var)
+    get_env(env, var)
   end
 
   def eval(func, _env) when is_function(func) do
@@ -182,13 +225,13 @@ defmodule Anoma.LocalDomain.Scheme do
                 Enum.zip(params, tl(args)),
                 closure_env,
                 fn {param, arg}, acc ->
-                  Map.put(acc, param, arg)
+                  put_env(acc, param, arg)
                 end
               )
 
             eval(
               body,
-              Map.put(
+              put_env(
                 call_env,
                 :self,
                 {:closure, params, body, closure_env}
