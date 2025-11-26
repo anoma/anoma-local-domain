@@ -221,7 +221,10 @@ defmodule Anoma.LocalDomain.Scheme do
         end
 
       :lambda ->
-        {{:closure, hd(args), Enum.at(args, 1), env_id(env)}, env}
+        {env, closure_env_id} = reserve_env(env)
+        closure = {:closure, hd(args), Enum.at(args, 1), closure_env_id}
+        env = insert_env(env, closure_env_id, :self, closure)
+        {closure, env}
 
       :apply ->
         [op, args] = args
@@ -240,14 +243,7 @@ defmodule Anoma.LocalDomain.Scheme do
                 end
               )
 
-            {result, env} = eval(
-              body,
-              put_env(
-                call_env,
-                :self,
-                {:closure, params, body, closure_env_id}
-              )
-                            )
+            {result, env} = eval(body, call_env)
 
             {result, switch_env(env, caller_env_id)}
 
