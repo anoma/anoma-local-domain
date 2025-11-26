@@ -3,7 +3,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   use TypedStruct
 
   typedstruct do
-    field(:scheme, any(), default: Map.new())
+    field(:scheme, any(), default: Anoma.LocalDomain.Scheme.new_env())
   end
 
   def start_link(opts) do
@@ -27,7 +27,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
     std =
       %__MODULE__{
-        scheme: natives
+        scheme: Anoma.LocalDomain.Scheme.map_to_env(natives)
       }
 
     {:ok, std}
@@ -66,14 +66,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   def all_scheme() do
     {:ok, scheme_fns} = GenServer.call(__MODULE__, {:all_scheme})
 
-    {:ok,
-     Enum.map(
-       Map.keys(scheme_fns),
-       fn name_scheme ->
-         {name_scheme, get_scheme(name_scheme)}
-       end
-     )
-     |> Map.new()}
+    {:ok, scheme_fns}
   end
 
   @impl true
@@ -85,17 +78,17 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
      %__MODULE__{
        state
        | scheme:
-           Map.put(
+           Anoma.LocalDomain.Scheme.put_env(
              state.scheme,
              name_scheme,
-             {:closure, args_scheme, body_scheme, Anoma.LocalDomain.Scheme.map_to_env(state.scheme)}
+             {:closure, args_scheme, body_scheme, Anoma.LocalDomain.Scheme.env_id(state.scheme)}
            )
      }}
   end
 
   @impl true
   def handle_call({:get_scheme, name_scheme}, _from, state) do
-    body = Map.get(state.scheme, name_scheme)
+    body = Anoma.LocalDomain.Scheme.get_env(state.scheme, name_scheme)
     {:reply, {:ok, body}, state}
   end
 

@@ -63,7 +63,7 @@ defmodule Examples.EFixedSupply do
     consumed? = true
     logic = Map.get(obj, "logic")
 
-    result =
+    {result, env} =
       Anoma.LocalDomain.Scheme.eval([
         :apply,
         logic,
@@ -94,7 +94,7 @@ defmodule Examples.EFixedSupply do
     consumed? = false
     logic = Map.get(obj, "logic")
 
-    result =
+    {result, env} =
       Anoma.LocalDomain.Scheme.eval([
         :apply,
         logic,
