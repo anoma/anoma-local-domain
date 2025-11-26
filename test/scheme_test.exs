@@ -17,6 +17,7 @@ defmodule SchemeTest do
     Examples.EScheme.native_at()
     Examples.EScheme.map()
     Examples.EScheme.apply_map()
+    Examples.EScheme.mutual_recursion()
     Examples.EScheme.filter()
     Examples.EScheme.nthcdr()
     Examples.EScheme.take()

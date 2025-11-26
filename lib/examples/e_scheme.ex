@@ -16,7 +16,7 @@ defmodule Examples.EScheme do
   end
 
   def lambda() do
-    [:lambda, [:a], [:+, :a, 1]]
+    [:function, :_, [:a], [:+, :a, 1]]
   end
 
   def apply() do
@@ -48,8 +48,8 @@ defmodule Examples.EScheme do
   def apply_map() do
     expr = [
       :apply,
-      [:lambda, [:x], [:+, :x, 1]],
-      [:map, [:list, 1], [:lambda, [:x], [:+, :x, 1]]]
+      [:function, :_, [:x], [:+, :x, 1]],
+      [:map, [:list, 1], [:function, :_, [:x], [:+, :x, 1]]]
     ]
 
     {result, env} = Scheme.eval(expr)
@@ -57,8 +57,21 @@ defmodule Examples.EScheme do
     result
   end
 
+  def mutual_recursion() do
+    expr = [
+      [:function, :_, [],
+       [:function, :odd, [:n], [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]],
+       [:function, :even, [:n], [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]],
+       [:even, 8]]
+    ]
+
+    {result, env} = Scheme.eval(expr)
+    assert result == true
+    result
+  end
+
   def filter() do
-    filter = [:lambda, [:x], [:==, :x, 1]]
+    filter = [:function, :_, [:x], [:==, :x, 1]]
     expr = [:filter, list(), filter]
     {result, env} = Scheme.eval(expr)
     assert result == [:list, 1]
@@ -110,7 +123,8 @@ defmodule Examples.EScheme do
       )
 
     assert r == [
-             :lambda,
+             :function,
+             :_,
              [:x],
              [:+, :x, 1]
            ]

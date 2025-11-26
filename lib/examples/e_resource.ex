@@ -22,7 +22,8 @@ defmodule Examples.EResource do
 
     assert r["logic"] ==
              [
-               :lambda,
+               :function,
+               :_,
                [:obj, :_instance, :_consumedp],
                [:is_integer, [:get, :obj, "data"]]
              ]

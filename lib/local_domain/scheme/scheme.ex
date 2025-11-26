@@ -118,6 +118,16 @@ defmodule Anoma.LocalDomain.Scheme do
     end)
   end
 
+  # Add functions to the environment
+
+  def build_body_env([:function, name, params | body], {env, body_env_id}) do
+    {put_env(env, name, {:closure, params, body, body_env_id}), body_env_id}
+  end
+
+  def build_body_env(_, acc), do: acc
+
+  # Evaluate the given expression in the given environment
+
   def eval(num, env) when is_number(num) do
     {num, env}
   end
@@ -220,10 +230,10 @@ defmodule Anoma.LocalDomain.Scheme do
           {false, env} -> eval(Enum.at(args, 1), env)
         end
 
-      :lambda ->
+      :function ->
         {env, closure_env_id} = reserve_env(env)
-        closure = {:closure, hd(args), Enum.at(args, 1), closure_env_id}
-        env = insert_env(env, closure_env_id, :self, closure)
+        closure = {:closure, Enum.at(args, 1), tl(tl(args)), closure_env_id}
+        env = insert_env(env, closure_env_id, hd(args), closure)
         {closure, env}
 
       :apply ->
@@ -234,7 +244,7 @@ defmodule Anoma.LocalDomain.Scheme do
         case eval(op, env) do
           {{:closure, params, body, closure_env_id}, env} ->
             caller_env_id = env_id(env)
-            call_env =
+            callee_env =
               Enum.reduce(
                 Enum.zip(params, tl(args)),
                 switch_env(env, closure_env_id),
@@ -243,7 +253,13 @@ defmodule Anoma.LocalDomain.Scheme do
                 end
               )
 
-            {result, env} = eval(body, call_env)
+            {callee_env, body_env_id} = reserve_env(callee_env)
+
+            {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
+
+            callee_env = insert_env(callee_env, body_env_id, nil, nil)
+
+            {result, env} = Enum.reduce(body, {nil, callee_env}, fn expr, {_result, call_env} -> eval(expr, call_env) end)
 
             {result, switch_env(env, caller_env_id)}
 
@@ -304,7 +320,8 @@ defmodule Anoma.LocalDomain.Scheme do
 
   def ast_to_scheme({:fn, _, [{:->, _, [inputs, body]}]}) do
     [
-      :lambda,
+      :function,
+      :_,
       Enum.map(inputs, fn i -> ast_to_scheme(i) end),
       ast_to_scheme(body)
     ]
