@@ -16,6 +16,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
     # Start with a standard environment
 
     natives = %{
+      >: {:native, :erlang, :>},
       +: {:native, :erlang, :+},
       -: {:native, :erlang, :-},
       ==: {:native, :erlang, :==},

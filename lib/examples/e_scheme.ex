@@ -107,6 +107,26 @@ defmodule Examples.EScheme do
     result
   end
 
+  def labels() do
+    result = Scheme.eval([:labels, [[:is_even, [:x],
+                                     [:and,
+                                      [:>, :x, -1],
+                                      [:or,
+                                       [:==, :x, 0],
+                                       [:is_odd, [:-, :x, 1]]]]],
+                                    [:is_odd, [:x],
+                                     [:and,
+                                      [:>, :x, 0],
+                                      [:or,
+                                       [:==, :x, 1],
+                                       [:is_even, [:-, :x, 1]]]]]],
+                          [:is_even, 3]])
+
+    assert result == false
+
+    result
+  end
+
   def function() do
     result = Scheme.eval([:function, :dec, [:x], [:-, :x, 1]])
     assert result == :dec

@@ -118,9 +118,6 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def eval([op | args], env, store) do
-    # IO.inspect(op)
-    # IO.inspect(args)
-    # IO.inspect(env)
     case op do
       :if ->
         {cond_statement, _, _} = eval(hd(args), env, store)
@@ -187,6 +184,27 @@ defmodule Anoma.LocalDomain.Scheme do
         {val, _, _} = eval(val, env, store)
         eval(body, Map.put(env, name, val), store)
 
+      :labels ->
+        IO.puts(op)
+        [labels, body] = args
+        cells = Enum.map(labels,
+          fn [name, params, label_body] ->
+            id = Base.encode16(:crypto.strong_rand_bytes(8))
+            {name, params, label_body, id}
+          end)
+
+        closure_env = Enum.reduce(cells, env,
+          fn {name, _params, _label_body, id}, acc ->
+            Map.put(acc, name, {:cell, id})
+          end)
+
+        new_store = Enum.reduce(cells, store,
+          fn {_name, params, body, id}, acc ->
+            Map.put(acc, id, {:closure, params, body, closure_env})
+          end)
+
+        eval(body, closure_env, new_store)
+        
       :do ->
         Enum.reduce(args, {nil, env, store},
           fn arg, {_, acc, store} ->
