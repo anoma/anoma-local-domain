@@ -101,6 +101,28 @@ defmodule Examples.EScheme do
     result
   end
 
+  def let() do
+    result = Scheme.eval([:let, :a, 3, [:+, :a, 1]])
+    assert result == 4
+    result
+  end
+
+  def function() do
+    result = Scheme.eval([:function, :dec, [:x], [:-, :x, 1]])
+    assert result == :dec
+    result
+  end
+
+  def do_macro() do
+    result = Scheme.eval([:do,
+                          [:function, :dec, [:x], [:-, :x, 1]],
+                          [:dec, 2]
+                         ])
+
+    assert result == 1
+    result
+  end
+
   def fn_to_scheme() do
     r =
       Scheme.ast_to_scheme(

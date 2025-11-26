@@ -4,6 +4,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
   typedstruct do
     field(:scheme, any(), default: Map.new())
+    field(:store, any(), default: Map.new())
   end
 
   def start_link(opts) do
@@ -27,7 +28,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
     std =
       %__MODULE__{
-        scheme: natives
+        scheme: natives,
+        store: %{}
       }
 
     {:ok, std}
@@ -46,7 +48,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
         body_scheme
       )
     end
-
+          
     :ok
   end
 
@@ -64,35 +66,29 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   end
 
   def all_scheme() do
-    {:ok, scheme_fns} = GenServer.call(__MODULE__, {:all_scheme})
-
-    {:ok,
-     Enum.map(
-       Map.keys(scheme_fns),
-       fn name_scheme ->
-         {name_scheme, get_scheme(name_scheme)}
-       end
-     )
-     |> Map.new()}
+    GenServer.call(__MODULE__, {:all_scheme})
   end
 
   @impl true
   def handle_cast(
-        {:put_scheme, name_scheme, args_scheme, body_scheme},
-        state
-      ) do
+    {:put_scheme, name_scheme, args_scheme, body_scheme},
+    state
+  ) do
+    cell_id = Base.encode16(:crypto.strong_rand_bytes(8))
+    env = Map.put(state.scheme, name_scheme, {:cell, cell_id})
+    
     {:noreply,
      %__MODULE__{
        state
-       | scheme:
-           Map.put(
-             state.scheme,
-             name_scheme,
-             {:closure, args_scheme, body_scheme, state.scheme}
-           )
+       |
+       scheme: env,
+       store:
+       Map.put(state.store,
+         cell_id,
+         {:closure, args_scheme, body_scheme, env})
      }}
   end
-
+      
   @impl true
   def handle_call({:get_scheme, name_scheme}, _from, state) do
     body = Map.get(state.scheme, name_scheme)
@@ -101,6 +97,6 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
   @impl true
   def handle_call({:all_scheme}, _from, state) do
-    {:reply, {:ok, state.scheme}, state}
+    {:reply, {:ok, state.scheme, state.store}, state}
   end
 end

@@ -6,7 +6,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       :if,
       [:==, :xs, nil],
       0,
-      [:+, 1, [:self, [:cdr, :xs]]]
+      [:+, 1, [:length, [:cdr, :xs]]]
     ]
   end
 
@@ -15,7 +15,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       :if,
       [:==, :n, 0],
       [:car, :xs],
-      [:self, [:cdr, :xs], [:-, :n, 1]]
+      [:at, [:cdr, :xs], [:-, :n, 1]]
     ]
   end
 
@@ -27,7 +27,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       [
         :cons,
         [:f, [:car, :xs]],
-        [:self, [:cdr, :xs], :f]
+        [:map, [:cdr, :xs], :f]
       ]
     ]
   end
@@ -43,9 +43,9 @@ defmodule Anoma.LocalDomain.Scheme.Std do
         [
           :cons,
           [:car, :xs],
-          [:self, [:cdr, :xs], :f]
+          [:filter, [:cdr, :xs], :f]
         ],
-        [:self, [:cdr, :xs], :f]
+        [:filter, [:cdr, :xs], :f]
       ]
     ]
   end
@@ -55,7 +55,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       :if,
       [:==, :n, 0],
       :xs,
-      [:self, [:cdr, :xs], [:-, :n, 1]]
+      [:nthcdr, [:cdr, :xs], [:-, :n, 1]]
     ]
   end
 
@@ -67,7 +67,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       [
         :cons,
         [:car, :xs],
-        [:self, [:cdr, :xs], [:-, :n, 1]]
+        [:take, [:cdr, :xs], [:-, :n, 1]]
       ]
     ]
   end

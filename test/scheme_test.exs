@@ -24,6 +24,9 @@ defmodule SchemeTest do
     Examples.EScheme.put()
     Examples.EScheme.car()
     Examples.EScheme.cdr()
+    Examples.EScheme.let()
+    Examples.EScheme.function()
+    Examples.EScheme.do_macro()
 
     Examples.EScheme.fn_to_scheme()
     Examples.EScheme.struct_to_scheme()
