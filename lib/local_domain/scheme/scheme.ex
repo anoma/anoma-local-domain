@@ -62,11 +62,11 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def default_env(extra \\ %{}) do
-    {:ok, scheme_fns} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
+    {:ok, {scheme_fns, prelude_fns}} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
 
-    Enum.reduce(extra, scheme_fns, fn {name, value}, acc ->
+    {Enum.reduce(extra, scheme_fns, fn {name, value}, acc ->
       put_env(acc, name, value)
-    end)
+    end), prelude_fns}
   end
 
   def new_env(), do: {%{}, 0, 1}
@@ -275,8 +275,11 @@ defmodule Anoma.LocalDomain.Scheme do
     end
   end
 
+  # Evaluate the given expression with a prelude prepended
+
   def eval(expr) do
-    eval(expr, default_env())
+    {env, prelude} = default_env()
+    eval([[:function, :_, [] | prelude] ++ [expr]], env)
   end
 
   def ast_to_scheme(n) when is_integer(n) do

@@ -4,6 +4,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
   typedstruct do
     field(:scheme, any(), default: Anoma.LocalDomain.Scheme.new_env())
+    field(:prelude, any(), default: [])
   end
 
   def start_link(opts) do
@@ -64,9 +65,9 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   end
 
   def all_scheme() do
-    {:ok, scheme_fns} = GenServer.call(__MODULE__, {:all_scheme})
+    {:ok, {scheme_fns, prelude_fns}} = GenServer.call(__MODULE__, {:all_scheme})
 
-    {:ok, scheme_fns}
+    {:ok, {scheme_fns, prelude_fns}}
   end
 
   @impl true
@@ -74,10 +75,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
         {:put_scheme, name_scheme, args_scheme, body_scheme},
         state
       ) do
-    {env, closure_env_id} = Anoma.LocalDomain.Scheme.reserve_env(state.scheme)
-    closure = {:closure, args_scheme, [body_scheme], closure_env_id}
-    env = Anoma.LocalDomain.Scheme.insert_env(env, closure_env_id, name_scheme, closure)
-    {:noreply, %__MODULE__{state | scheme: env}}
+    func = [:function, name_scheme, args_scheme, body_scheme]
+    {:noreply, %__MODULE__{state | prelude: [func | state.prelude]}}
   end
 
   @impl true
@@ -88,6 +87,6 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
   @impl true
   def handle_call({:all_scheme}, _from, state) do
-    {:reply, {:ok, state.scheme}, state}
+    {:reply, {:ok, {state.scheme, state.prelude}}, state}
   end
 end
