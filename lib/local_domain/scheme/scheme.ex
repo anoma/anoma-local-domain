@@ -137,33 +137,15 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def build_body_env(_, acc), do: acc
-  
-  def eval(num, env) when is_number(num) do
-    {num, env}
-  end
 
-  def eval(true, env) do
-    {true, env}
-  end
+  # Evaluate the given expression in the given environment
 
-  def eval(false, env) do
-    {false, env}
-  end
-
-  def eval(nil, env) do
-    {nil, env}
-  end
-
-  def eval(str, env) when is_binary(str) do
-    {str, env}
+  def eval(obj, env) when is_number(obj) or is_boolean(obj) or is_binary(obj) or is_nil(obj) or is_function(obj) do
+    {obj, env}
   end
 
   def eval(var, env) when is_atom(var) do
     {get_env(env, var), env}
-  end
-
-  def eval(func, env) when is_function(func) do
-    {func, env}
   end
 
   def eval(map, env) when is_map(map) do
