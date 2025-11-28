@@ -198,34 +198,6 @@ defmodule Anoma.LocalDomain.Scheme do
 
       :list -> Enum.map_reduce(args, env, &eval/2)
 
-      :car ->
-        case eval(hd(args), env) do
-          {args, env} -> {hd(args), env}
-          _ -> :err
-        end
-
-      :cdr ->
-        case eval(hd(args), env) do
-          {args, env} ->
-            if length(args) == 1 do
-              {nil, env}
-            else
-              {tl(args), env}
-            end
-
-          _ ->
-            :cdr_err
-        end
-
-      :cons ->
-        {car, env} = eval(hd(args), env)
-
-        case eval(Enum.at(args, 1), env) do
-          {nil, env} -> {[car], env}
-          {args, env} -> {[car | args], env}
-          _ -> :err
-        end
-
       :and ->
         case eval(hd(args), env) do
           {true, env} -> eval(Enum.at(args, 1), env)

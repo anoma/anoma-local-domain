@@ -24,7 +24,10 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
       put: {:native, Map, :put},
       not: {:native, :erlang, :not},
       is_integer: {:native, :erlang, :is_integer},
-      is_number: {:native, :erlang, :is_number}
+      is_number: {:native, :erlang, :is_number},
+      car: {:native, Anoma.LocalDomain.SchemeRegistry, :car},
+      cdr: {:native, Anoma.LocalDomain.SchemeRegistry, :cdr},
+      cons: {:native, Anoma.LocalDomain.SchemeRegistry, :cons}
     }
 
     std =
@@ -34,6 +37,16 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
     {:ok, std}
   end
+
+  def car(list), do: hd(list)
+
+  def cdr([elt]), do: nil
+
+  def cdr(list), do: tl(list)
+
+  def cons(head, nil), do: [head]
+
+  def cons(head, tail), do: [head | tail]
 
   @doc """
   Register all elixir->scheme mappings in a process.
