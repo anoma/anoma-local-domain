@@ -41,7 +41,7 @@ defmodule Examples.EScheme do
   def map() do
     expr = [:map, list(), lambda()]
     {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 2, 3, 4]
+    assert result == [2, 3, 4]
     result
   end
 
@@ -88,21 +88,21 @@ defmodule Examples.EScheme do
     filter = [:function, :_, [:x], [:==, :x, 1]]
     expr = [:filter, list(), filter]
     {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 1]
+    assert result == [1]
     result
   end
 
   def nthcdr() do
     expr = [:nthcdr, list(), 2]
     {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 3]
+    assert result == [3]
     result
   end
 
   def take() do
     expr = [:take, list(), 2]
     {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 1, 2]
+    assert result == [1, 2]
     result
   end
 
@@ -124,7 +124,7 @@ defmodule Examples.EScheme do
 
   def cdr() do
     {result, _env} = Scheme.eval([:cdr, list()])
-    assert result == [:list, 2, 3]
+    assert result == [2, 3]
     result
   end
 

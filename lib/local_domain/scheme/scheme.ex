@@ -196,23 +196,21 @@ defmodule Anoma.LocalDomain.Scheme do
       :quote ->
         {hd(args), env}
 
-      :list ->
-        {list, env} = Enum.map_reduce(args, env, fn arg, env -> eval(arg, env) end)
-        {[:list | list], env}
+      :list -> Enum.map_reduce(args, env, &eval/2)
 
       :car ->
         case eval(hd(args), env) do
-          {[:list | args], env} -> {hd(args), env}
+          {args, env} -> {hd(args), env}
           _ -> :err
         end
 
       :cdr ->
         case eval(hd(args), env) do
-          {[:list | args], env} ->
+          {args, env} ->
             if length(args) == 1 do
               {nil, env}
             else
-              {[:list | tl(args)], env}
+              {tl(args), env}
             end
 
           _ ->
@@ -223,8 +221,8 @@ defmodule Anoma.LocalDomain.Scheme do
         {car, env} = eval(hd(args), env)
 
         case eval(Enum.at(args, 1), env) do
-          {[:list | args], env} -> {[:list, car | args], env}
-          {nil, env} -> {[:list, car], env}
+          {nil, env} -> {[car], env}
+          {args, env} -> {[car | args], env}
           _ -> :err
         end
 
@@ -256,7 +254,7 @@ defmodule Anoma.LocalDomain.Scheme do
             caller_env_id = env_id(env)
             callee_env =
               Enum.reduce(
-                Enum.zip(params, tl(args)),
+                Enum.zip(params, args),
                 switch_env(env, closure_env_id),
                 fn {param, arg}, acc ->
                   put_env(acc, param, arg)
@@ -274,7 +272,7 @@ defmodule Anoma.LocalDomain.Scheme do
             {result, switch_env(env, caller_env_id)}
 
           {{:native, module, functor}, env} ->
-            {apply(module, functor, tl(args)), env}
+            {apply(module, functor, args), env}
 
           _ ->
             :op_err
