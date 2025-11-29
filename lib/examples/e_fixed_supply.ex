@@ -52,18 +52,21 @@ defmodule Examples.EFixedSupply do
     transaction = transact_fixed_supply()
     obj = hd(transaction.consumed)
     logic = Anoma.LocalDomain.Resource.compile_logic(obj)
-    apply(logic, [obj, transaction, true])
+    result = apply(logic, [obj, transaction, true])
+
+    assert result == true
+    
+    result
   end
 
   def interpret_fixed_supply_scheme() do
     transaction = transact_fixed_supply()
     unit = Action.to_scheme(transaction)
-    # IO.inspect(unit)
     obj = Enum.at(Map.get(unit, "consumed"), 1)
     consumed? = true
     logic = Map.get(obj, "logic")
-
-    result =
+    
+    {result, _env} =
       Anoma.LocalDomain.Scheme.eval([
         :apply,
         logic,
@@ -94,7 +97,7 @@ defmodule Examples.EFixedSupply do
     consumed? = false
     logic = Map.get(obj, "logic")
 
-    result =
+    {result, _env} =
       Anoma.LocalDomain.Scheme.eval([
         :apply,
         logic,

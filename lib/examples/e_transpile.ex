@@ -412,4 +412,33 @@ defmodule Examples.ETranspile do
 
     {state, block, Transpile.program_to_string(block)}
   end
+
+  def transpile_resource_data() do
+    state = Transpile.new()
+
+    {state, block} =
+      Transpile.transpile(state,
+        [
+          [
+            :function,
+            :scm_main,
+            [],
+            [
+              :commit_sexpr,              
+              [:get, [:read_resource], "data"]
+            ]
+          ]
+        ])
+
+    {state, block, Transpile.program_to_string(block)}
+  end
+
+  def transpile_integer_logic() do
+    state = Transpile.new()
+    {state, block} = Transpile.transpile(state,
+      [
+        
+      ])
+    
+  end
 end

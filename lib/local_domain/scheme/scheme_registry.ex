@@ -3,8 +3,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   use TypedStruct
 
   typedstruct do
-    field(:scheme, any(), default: Map.new())
-    field(:store, any(), default: Map.new())
+    field(:scheme, any(), default: Anoma.LocalDomain.Scheme.new_env())
+    field(:prelude, any(), default: [])
   end
 
   def start_link(opts) do
@@ -29,8 +29,7 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
 
     std =
       %__MODULE__{
-        scheme: natives,
-        store: %{}
+        scheme: Anoma.LocalDomain.Scheme.map_to_env(natives)
       }
 
     {:ok, std}
@@ -67,37 +66,28 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   end
 
   def all_scheme() do
-    GenServer.call(__MODULE__, {:all_scheme})
+    {:ok, {scheme_fns, prelude_fns}} = GenServer.call(__MODULE__, {:all_scheme})
+
+    {:ok, {scheme_fns, prelude_fns}}
   end
 
   @impl true
   def handle_cast(
-    {:put_scheme, name_scheme, args_scheme, body_scheme},
-    state
-  ) do
-    cell_id = Base.encode16(:crypto.strong_rand_bytes(8))
-    env = Map.put(state.scheme, name_scheme, {:cell, cell_id})
-    
-    {:noreply,
-     %__MODULE__{
-       state
-       |
-       scheme: env,
-       store:
-       Map.put(state.store,
-         cell_id,
-         {:closure, args_scheme, body_scheme, env})
-     }}
+        {:put_scheme, name_scheme, args_scheme, body_scheme},
+        state
+      ) do
+    func = [:function, name_scheme, args_scheme, body_scheme]
+    {:noreply, %__MODULE__{state | prelude: [func | state.prelude]}}
   end
       
   @impl true
   def handle_call({:get_scheme, name_scheme}, _from, state) do
-    body = Map.get(state.scheme, name_scheme)
+    body = Anoma.LocalDomain.Scheme.get_env(state.scheme, name_scheme)
     {:reply, {:ok, body}, state}
   end
 
   @impl true
   def handle_call({:all_scheme}, _from, state) do
-    {:reply, {:ok, state.scheme, state.store}, state}
+    {:reply, {:ok, {state.scheme, state.prelude}}, state}
   end
 end

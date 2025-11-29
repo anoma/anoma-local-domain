@@ -61,94 +61,158 @@ defmodule Anoma.LocalDomain.Scheme do
     end
   end
 
-  def default_env() do
-    {:ok, scheme_fns, store} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
+  @doc """
+  Retrieve all scheme fns known by the registry and put into an environment
+  """
+  def default_env(extra \\ %{}) do
+    {:ok, {scheme_fns, prelude_fns}} = Anoma.LocalDomain.SchemeRegistry.all_scheme()
 
-    {scheme_fns, store}
+    {Enum.reduce(extra, scheme_fns, fn {name, value}, acc ->
+      put_env(acc, name, value)
+    end), prelude_fns}
   end
 
-  def eval(num, env, store) when is_number(num) do
-    {num, env, store}
+  def new_env(), do: {%{}, 0, 1}
+
+
+  @doc """
+  Put a given binding into the environment
+  """
+  def put_env({tree, index, next}, name, value) do
+    {Map.put(tree, next, {name, value, index}), next, next+1}
   end
 
-  def eval(true, env, store) do
-    {true, env, store}
+  @doc """
+  Get the value of the given identifier in the environment
+  """
+  def get_env({tree, index, next}, search_name) do
+    {name, value, parent} = Map.fetch!(tree, index)
+    if name == search_name do
+      value
+    else
+      get_env({tree, parent, next}, search_name)
+    end
   end
 
-  def eval(false, env, store) do
-    {false, env, store}
+  @doc """
+  Get the unique identifier for the given environment
+  """
+  def env_id({_tree, index, _next}), do: index
+
+  @doc """
+  Reserve a unique environment identifier to fill in later
+  """
+  def reserve_env({tree, index, next}) do
+    {{tree, index, next+1}, next}
   end
 
-  def eval(nil, env, store) do
-    {nil, env, store}
+  @doc """
+  Insert the given binding at the given unique identifier
+  """
+  def insert_env({tree, index, next}, at, name, value) do
+    {Map.put(tree, at, {name, value, index}), at, next}
   end
 
-  def eval(str, env, store) when is_binary(str) do
-    {str, env, store}
+  @doc """
+  Switch to the given environment
+  """
+  def switch_env({tree, _index, next}, target) do
+    {tree, target, next}
   end
 
-  def eval(var, env, store) when is_atom(var) do
-    {Map.fetch!(env, var), env, store}
+  @doc """
+  Convert an ordinary Elixir map into an environment
+  """
+  def map_to_env(map) do
+    Enum.reduce(map, new_env(), fn {name, value}, acc ->
+      put_env(acc, name, value)
+    end)
   end
 
-  def eval(func, env, store) when is_function(func) do
-    {func, env, store}
+  @doc """
+  Add functions to the environment
+  """
+  def build_body_env([:function, name, params | body], {env, body_env_id}) do
+    {put_env(env, name, {:closure, params, body, body_env_id}), body_env_id}
   end
 
-  def eval(map, env, store) when is_map(map) do
-    {map
-    |> Enum.map(fn {k, v} ->
-       {k, _, _} = eval(k, env, store)
-       {v, _, _} = eval(v, env, store)
-       {k, v} end)
-    |> Map.new(),
-     env, store}
-  end
-
-  def eval({:closure, params, body, closure_env}, env, store) do
-    {{:closure, params, body, closure_env}, env, store}
-  end
-
-  def eval({:cell, cell_id}, env, store) do
-    {{:cell, cell_id}, env, store}
-  end
+  def build_body_env(_, acc), do: acc
   
-  def eval({:native, module, functor}, env, store) do
-    {{:native, module, functor}, env, store}
+  def eval(num, env) when is_number(num) do
+    {num, env}
   end
 
-  def eval([op | args], env, store) do
+  def eval(true, env) do
+    {true, env}
+  end
+
+  def eval(false, env) do
+    {false, env}
+  end
+
+  def eval(nil, env) do
+    {nil, env}
+  end
+
+  def eval(str, env) when is_binary(str) do
+    {str, env}
+  end
+
+  def eval(var, env) when is_atom(var) do
+    {get_env(env, var), env}
+  end
+
+  def eval(func, env) when is_function(func) do
+    {func, env}
+  end
+
+  def eval(map, env) when is_map(map) do
+    {map, env} = map
+    |> Enum.map_reduce(env, fn {k, v}, env ->
+      {k, env} = eval(k, env)
+      {v, env} = eval(v, env)
+      {{k, v}, env} end)
+    {Map.new(map), env}
+  end
+
+  def eval({:closure, params, body, closure_env_id}, env) do
+    {{:closure, params, body, closure_env_id}, env}
+  end
+
+  def eval({:native, module, functor}, env) do
+    {{:native, module, functor}, env}
+  end
+
+  def eval([op | args], env) do
     case op do
       :if ->
-        {cond_statement, _, _} = eval(hd(args), env, store)
-        if cond_statement do
-          eval(Enum.at(args, 1), env, store)
+        {cond, env} = eval(hd(args), env)
+        if cond do
+          eval(Enum.at(args, 1), env)
         else
-          eval(Enum.at(args, 2), env, store)
+          eval(Enum.at(args, 2), env)
         end
 
       :quote ->
-        {[:quote, hd(args)], env, store}
+        {hd(args), env}
 
       :list ->
-        {[:list | Enum.map(args, fn arg ->
-             {arg, _, _} = eval(arg, env, store)
-             arg
-           end)], env, store}
+        {list, env} = Enum.map_reduce(args, env, fn arg, env -> eval(arg, env) end)
+        {[:list | list], env}
 
       :car ->
-        case eval(hd(args), env, store) do
-          {[:list | args], _, _} -> {hd(args), env, store}
-          _ -> :car_err
+        case eval(hd(args), env) do
+          {[:list | args], env} -> {hd(args), env}
+          _ -> :err
         end
 
       :cdr ->
-        case eval(hd(args), env, store) do
-          {[:list | args], _, _} ->
+        case eval(hd(args), env) do
+          {[:list | args], env} ->
             if length(args) == 1 do
-              {nil, env, store}
+              {nil, env}
             else
-              {[:list | tl(args)], env, store}
+              {[:list | tl(args)], env}
             end
 
           _ ->
@@ -156,110 +220,78 @@ defmodule Anoma.LocalDomain.Scheme do
         end
 
       :cons ->
-        {car, _, _} = eval(hd(args), env, store)
+        {car, env} = eval(hd(args), env)
 
-        case eval(Enum.at(args, 1), env, store) do
-          {[:list | args], _, _} -> {[:list, car | args], env, store}
-          {nil, _, _} -> {[:list, car], env, store}
-          _ -> :cons_err
+        case eval(Enum.at(args, 1), env) do
+          {[:list | args], env} -> {[:list, car | args], env}
+          {nil, env} -> {[:list, car], env}
+          _ -> :err
         end
 
       :and ->
-        case eval(hd(args), env, store) do
-          {true, _, _} -> eval(Enum.at(args, 1), env, store)
-          {false, _, _} -> {false, env, store}
+        case eval(hd(args), env) do
+          {true, env} -> eval(Enum.at(args, 1), env)
+          {false, env} -> {false, env}
         end
 
       :or ->
-        case eval(hd(args), env, store) do
-          {true, _, _} -> {true, env, store}
-          {false, _, _} -> eval(Enum.at(args, 1), env, store)
+        case eval(hd(args), env) do
+          {env, true} -> {true, env}
+          {false, env} -> eval(Enum.at(args, 1), env)
         end
 
-      :lambda ->
-        {{:closure, hd(args), Enum.at(args, 1), env}, env, store}
-
-      :let ->
-        [name, val, body] = args
-        {val, _, _} = eval(val, env, store)
-        eval(body, Map.put(env, name, val), store)
-
-      :labels ->
-        IO.puts(op)
-        [labels, body] = args
-        cells = Enum.map(labels,
-          fn [name, params, label_body] ->
-            id = Base.encode16(:crypto.strong_rand_bytes(8))
-            {name, params, label_body, id}
-          end)
-
-        closure_env = Enum.reduce(cells, env,
-          fn {name, _params, _label_body, id}, acc ->
-            Map.put(acc, name, {:cell, id})
-          end)
-
-        new_store = Enum.reduce(cells, store,
-          fn {_name, params, body, id}, acc ->
-            Map.put(acc, id, {:closure, params, body, closure_env})
-          end)
-
-        eval(body, closure_env, new_store)
-        
-      :do ->
-        Enum.reduce(args, {nil, env, store},
-          fn arg, {_, acc, store} ->
-            eval(arg, acc, store)
-          end)
-
       :function ->
-        [name, params, body] = args
-        cell_id = Base.encode16(:crypto.strong_rand_bytes(8))
-        closure_env = Map.put(env, name, {:cell, cell_id})
-        
-        {name, closure_env, Map.put(store, cell_id, {:closure, params, body, closure_env})}
+        {env, closure_env_id} = reserve_env(env)
+        closure = {:closure, Enum.at(args, 1), tl(tl(args)), closure_env_id}
+        env = insert_env(env, closure_env_id, hd(args), closure)
+        {closure, env}
         
         :apply ->
         [op, args] = args
 
-        {args, _, _} = eval(args, env, store)
+        {args, env} = eval(args, env)
 
-        case eval(op, env, store) do
-          {{:cell, cell_id}, _, _} ->
-            closure = Map.fetch!(store, cell_id)
-            eval([:apply, closure, args], env, store)
-            
-          {{:closure, params, body, closure_env}, _, _} ->
-            call_env =
+        case eval(op, env) do
+          {{:closure, params, body, closure_env_id}, env} ->
+            caller_env_id = env_id(env)
+            callee_env =
               Enum.reduce(
                 Enum.zip(params, tl(args)),
-                closure_env,
+                switch_env(env, closure_env_id),
                 fn {param, arg}, acc ->
-                  Map.put(acc, param, arg)
+                  put_env(acc, param, arg)
                 end
               )
 
-            eval(
-              body,
-              call_env,
-              store
-            )
+            {callee_env, body_env_id} = reserve_env(callee_env)
 
-          {{:native, module, functor}, _, _} ->
-            {apply(module, functor, tl(args)), env, store}
+            {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
+
+            callee_env = insert_env(callee_env, body_env_id, nil, nil)
+
+            {result, env} = Enum.reduce(body, {nil, callee_env}, fn expr, {_result, call_env} -> eval(expr, call_env) end)
+
+            {result, switch_env(env, caller_env_id)}
+
+          {{:native, module, functor}, env} ->
+            {apply(module, functor, tl(args)), env}
 
           _ ->
             :op_err
         end
 
       _ ->
-        eval([:apply, op, [:list | args]], env, store)
+        eval([:apply, op, [:list | args]], env)
     end
   end
 
+  @doc """
+  Evaluate the given expression with a prelude prepended
+  """
   def eval(expr) do
-    {env, store} = default_env()
-    {result, _, _} = eval(expr, env, store)
-    result
+    {env, prelude} = default_env()
+    IO.inspect(prelude)
+    eval([[:function, :_, [] | prelude] ++ [expr]], env)
   end
 
   def ast_to_scheme(n) when is_integer(n) do
@@ -303,7 +335,8 @@ defmodule Anoma.LocalDomain.Scheme do
 
   def ast_to_scheme({:fn, _, [{:->, _, [inputs, body]}]}) do
     [
-      :lambda,
+      :function,
+      :_,
       Enum.map(inputs, fn i -> ast_to_scheme(i) end),
       ast_to_scheme(body)
     ]

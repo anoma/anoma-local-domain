@@ -16,31 +16,31 @@ defmodule Examples.EScheme do
   end
 
   def lambda() do
-    [:lambda, [:a], [:+, :a, 1]]
+    [:function, :_, [:a], [:+, :a, 1]]
   end
 
   def apply() do
-    result = Scheme.eval([:apply, lambda(), [:list, 1]])
+    {result, _env} = Scheme.eval([:apply, lambda(), [:list, 1]])
     assert result == 2
     result
   end
 
   def native_plus() do
-    result = Scheme.eval([:+, 1, 2])
+    {result, _env} = Scheme.eval([:+, 1, 2])
     assert result == 3
     result
   end
 
   def native_at() do
     expr = [:at, list(), 2]
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == 3
     result
   end
 
   def map() do
     expr = [:map, list(), lambda()]
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == [:list, 2, 3, 4]
     result
   end
@@ -48,33 +48,60 @@ defmodule Examples.EScheme do
   def apply_map() do
     expr = [
       :apply,
-      [:lambda, [:x], [:+, :x, 1]],
-      [:map, [:list, 1], [:lambda, [:x], [:+, :x, 1]]]
+      [:function, :_, [:x], [:+, :x, 1]],
+      [:map, [:list, 1], [:function, :_, [:x], [:+, :x, 1]]]
     ]
 
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == 3
     result
   end
 
+  def mutual_recursion() do
+    expr = [
+      [
+        :function,
+        :_,
+        [],
+        [
+          :function,
+          :odd,
+          [:n],
+          [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]
+        ],
+        [
+          :function,
+          :even,
+          [:n],
+          [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]
+        ],
+        [:even, 8]
+      ]
+    ]
+
+    {result, _env} = Scheme.eval(expr)
+    assert result == true
+    result
+  end
+
   def filter() do
-    filter = [:lambda, [:x], [:==, :x, 1]]
+    filter = [:function, :_, [:x], [:==, :x, 1]]
     expr = [:filter, list(), filter]
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == [:list, 1]
     result
   end
 
   def nthcdr() do
     expr = [:nthcdr, list(), 2]
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == [:list, 3]
     result
   end
 
   def take() do
     expr = [:take, list(), 2]
-    result = Scheme.eval(expr)
+    {result, _env} = Scheme.eval(expr)
     assert result == [:list, 1, 2]
     result
   end
@@ -90,56 +117,14 @@ defmodule Examples.EScheme do
   end
 
   def car() do
-    result = Scheme.eval([:car, list()])
+    {result, _env} = Scheme.eval([:car, list()])
     assert result == 1
     result
   end
 
   def cdr() do
-    result = Scheme.eval([:cdr, list()])
+    {result, _env} = Scheme.eval([:cdr, list()])
     assert result == [:list, 2, 3]
-    result
-  end
-
-  def let() do
-    result = Scheme.eval([:let, :a, 3, [:+, :a, 1]])
-    assert result == 4
-    result
-  end
-
-  def labels() do
-    result = Scheme.eval([:labels, [[:is_even, [:x],
-                                     [:and,
-                                      [:>, :x, -1],
-                                      [:or,
-                                       [:==, :x, 0],
-                                       [:is_odd, [:-, :x, 1]]]]],
-                                    [:is_odd, [:x],
-                                     [:and,
-                                      [:>, :x, 0],
-                                      [:or,
-                                       [:==, :x, 1],
-                                       [:is_even, [:-, :x, 1]]]]]],
-                          [:is_even, 3]])
-
-    assert result == false
-
-    result
-  end
-
-  def function() do
-    result = Scheme.eval([:function, :dec, [:x], [:-, :x, 1]])
-    assert result == :dec
-    result
-  end
-
-  def do_macro() do
-    result = Scheme.eval([:do,
-                          [:function, :dec, [:x], [:-, :x, 1]],
-                          [:dec, 2]
-                         ])
-
-    assert result == 1
     result
   end
 
@@ -152,7 +137,8 @@ defmodule Examples.EScheme do
       )
 
     assert r == [
-             :lambda,
+             :function,
+             :_,
              [:x],
              [:+, :x, 1]
            ]

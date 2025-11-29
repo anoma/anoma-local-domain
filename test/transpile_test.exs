@@ -14,5 +14,6 @@ defmodule TranspileTest do
     Examples.ETranspile.transpile_mutual_recursion()
     Examples.ETranspile.transpile_nested_mutual_recursion()
     Examples.ETranspile.transpile_string_literals()
+    Examples.ETranspile.transpile_resource_data()
   end
 end

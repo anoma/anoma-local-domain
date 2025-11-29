@@ -36,7 +36,7 @@ defmodule Examples.EAction do
     consumed? = false
     logic = Map.get(obj, "logic")
 
-    result =
+    {result, _env} =
       Anoma.LocalDomain.Scheme.eval([
         :apply,
         logic,
