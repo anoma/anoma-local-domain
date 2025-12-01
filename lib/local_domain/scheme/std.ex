@@ -71,4 +71,30 @@ defmodule Anoma.LocalDomain.Scheme.Std do
       ]
     ]
   end
+
+  defscheme apply(fun, args) do
+    [:if, [:is_null, :args],
+     [:fun],
+     [[:function, :_, [:arg0, :args],
+       [:if, [:is_null, :args],
+        [:fun, :arg0],
+        [[:function, :_, [:arg1, :args],
+          [:if, [:is_null, :args],
+           [:fun, :arg0, :arg1],
+           [[:function, :_, [:arg2, :args],
+             [:if, [:is_null, :args],
+              [:fun, :arg0, :arg1, :arg2],
+              [[:function, :_, [:arg3, :args],
+                [:if, [:is_null, :args],
+                 [:fun, :arg0, :arg1, :arg2, :arg3],
+                 [[:function, :_, [:arg4, :args],
+                   [:if, [:is_null, :args],
+                    [:fun, :arg0, :arg1, :arg2, :arg3, :arg4],
+                    [:fun, :arg0, :arg1, :arg2, :arg3, :arg4, :args]]
+                 ], [:car, :args], [:cdr, :args]]]
+              ], [:car, :args], [:cdr, :args]]]
+           ], [:car, :args], [:cdr, :args]]]
+        ], [:car, :args], [:cdr, :args]]]
+     ], [:car, :args], [:cdr, :args]]]
+  end
 end

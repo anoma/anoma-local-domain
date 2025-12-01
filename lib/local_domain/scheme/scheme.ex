@@ -196,12 +196,6 @@ defmodule Anoma.LocalDomain.Scheme do
 
   # Define function application syntax
 
-  def eval([:apply, op, args], env) do
-    {args, env} = eval(args, env)
-    {op, env} = eval(op, env)
-    eval_apply(op, args, env)
-  end
-
   def eval([op | args], env) do
     {args, env} = Enum.map_reduce(args, env, &eval/2)
     {op, env} = eval(op, env)
