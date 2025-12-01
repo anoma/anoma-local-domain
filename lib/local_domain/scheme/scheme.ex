@@ -138,9 +138,15 @@ defmodule Anoma.LocalDomain.Scheme do
 
   def build_body_env(_, acc), do: acc
 
+  # Guards to recognize special values in the DSL
+
+  defguard is_closure(obj) when is_tuple(obj) and length(obj) == 4 and elem(obj, 0) == :closure
+
+  defguard is_native(obj) when is_tuple(obj) and length(obj) == 3 and elem(obj, 0) == :native
+
   # Evaluate the given expression in the given environment
 
-  def eval(obj, env) when is_number(obj) or is_boolean(obj) or is_binary(obj) or is_nil(obj) or is_function(obj) do
+  def eval(obj, env) when is_number(obj) or is_boolean(obj) or is_binary(obj) or is_nil(obj) or is_closure(obj) or is_native(obj) do
     {obj, env}
   end
 
@@ -156,10 +162,6 @@ defmodule Anoma.LocalDomain.Scheme do
       {{k, v}, env} end)
     {Map.new(map), env}
   end
-
-  def eval(closure = {:closure, _, _, _}, env), do: closure
-
-  def eval(native = {:native, _, _}, env), do: native
 
   def eval([:if, cond, consequent, alternate], env) do
     {cond, env} = eval(cond, env)
@@ -194,6 +196,8 @@ defmodule Anoma.LocalDomain.Scheme do
     eval(expansion, env)
   end
 
+  # Define function application syntax
+
   def eval([:apply, op, args], env) do
     {args, env} = eval(args, env)
     {op, env} = eval(op, env)
@@ -210,14 +214,19 @@ defmodule Anoma.LocalDomain.Scheme do
 
   def eval_apply({:closure, params, body, closure_env_id}, args, env) do
     caller_env_id = env_id(env)
-    put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
+    # Move to the closure/callee's environment
     callee_env = switch_env(env, closure_env_id)
+    # Bind the closure's parameters
+    put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
     callee_env = Enum.reduce(Enum.zip(params, args), callee_env, put_env)
+    # Bind mutually recursive functions in the body
     {callee_env, body_env_id} = reserve_env(callee_env)
     {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
     callee_env = insert_env(callee_env, body_env_id, nil, nil)
+    # Evaluate the body expressions
     eval = fn expr, {_result, call_env} -> eval(expr, call_env) end
     {result, env} = Enum.reduce(body, {nil, callee_env}, eval)
+    # Move back to the caller's environment
     {result, switch_env(env, caller_env_id)}
   end
 
