@@ -157,92 +157,70 @@ defmodule Anoma.LocalDomain.Scheme do
     {Map.new(map), env}
   end
 
-  def eval({:closure, params, body, closure_env_id}, env) do
-    {{:closure, params, body, closure_env_id}, env}
-  end
+  def eval(closure = {:closure, _, _, _}, env), do: closure
 
-  def eval({:native, module, functor}, env) do
-    {{:native, module, functor}, env}
-  end
+  def eval(native = {:native, _, _}, env), do: native
 
-  def eval([op | args], env) do
-    case op do
-      :if ->
-        {cond, env} = eval(hd(args), env)
-        if cond do
-          eval(Enum.at(args, 1), env)
-        else
-          eval(Enum.at(args, 2), env)
-        end
-
-      :quote ->
-        {hd(args), env}
-
-      :list -> Enum.map_reduce(args, env, &eval/2)
-
-      :and ->
-        case eval(hd(args), env) do
-          {true, env} -> eval(Enum.at(args, 1), env)
-          {false, env} -> {false, env}
-        end
-
-      :or ->
-        case eval(hd(args), env) do
-          {env, true} -> {true, env}
-          {false, env} -> eval(Enum.at(args, 1), env)
-        end
-
-      :function ->
-        {env, closure_env_id} = reserve_env(env)
-        closure = {:closure, Enum.at(args, 1), tl(tl(args)), closure_env_id}
-        env = insert_env(env, closure_env_id, hd(args), closure)
-        {closure, env}
-        
-        :apply ->
-        [op, args] = args
-
-        {args, env} = eval(args, env)
-
-        case eval(op, env) do
-          {{:closure, params, body, closure_env_id}, env} ->
-            caller_env_id = env_id(env)
-            callee_env =
-              Enum.reduce(
-                Enum.zip(params, args),
-                switch_env(env, closure_env_id),
-                fn {param, arg}, acc ->
-                  put_env(acc, param, arg)
-                end
-              )
-
-            {callee_env, body_env_id} = reserve_env(callee_env)
-
-            {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
-
-            callee_env = insert_env(callee_env, body_env_id, nil, nil)
-
-            {result, env} = Enum.reduce(body, {nil, callee_env}, fn expr, {_result, call_env} -> eval(expr, call_env) end)
-
-            {result, switch_env(env, caller_env_id)}
-
-          {{:native, module, functor}, env} ->
-            {apply(module, functor, args), env}
-
-          _ ->
-            :op_err
-        end
-
-      _ ->
-        eval([:apply, op, [:list | args]], env)
+  def eval([:if, cond, consequent, alternate], env) do
+    {cond, env} = eval(cond, env)
+    if cond do
+      eval(consequent, env)
+    else
+      eval(alternate, env)
     end
   end
+
+  def eval([:and, expr1, expr2], env) do
+    eval([:if, expr1, expr2, false], env)
+  end
+
+  def eval([:or, expr1, expr2], env) do
+    eval([:if, expr1, true, expr2], env)
+  end
+
+  def eval([:list | args], env), do: Enum.map_reduce(args, env, &eval/2)
+
+  def eval([:quote, expr], env), do: {expr, env}
+
+  def eval([:function, name, params | body], env) do
+    {env, closure_env_id} = reserve_env(env)
+    closure = {:closure, params, body, closure_env_id}
+    env = insert_env(env, closure_env_id, name, closure)
+    {closure, env}
+  end
+
+  def eval([:apply, op, args], env) do
+    {args, env} = eval(args, env)
+    {op, env} = eval(op, env)
+    eval_apply(op, args, env)
+  end
+
+  def eval_apply({:closure, params, body, closure_env_id}, args, env) do
+    caller_env_id = env_id(env)
+    put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
+    callee_env = switch_env(env, closure_env_id)
+    callee_env = Enum.reduce(Enum.zip(params, args), callee_env, put_env)
+    {callee_env, body_env_id} = reserve_env(callee_env)
+    {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
+    callee_env = insert_env(callee_env, body_env_id, nil, nil)
+    eval = fn expr, {_result, call_env} -> eval(expr, call_env) end
+    {result, env} = Enum.reduce(body, {nil, callee_env}, eval)
+    {result, switch_env(env, caller_env_id)}
+  end
+
+  def eval_apply({:native, module, functor}, args, env) do
+    {apply(module, functor, args), env}
+  end
+
+  def eval([op | args], env), do: eval([:apply, op, [:list | args]], env)
+
+  # Evaluate the given expression with a prelude prepended
 
   @doc """
   Evaluate the given expression with a prelude prepended
   """
   def eval(expr) do
     {env, prelude} = default_env()
-    # IO.inspect([[:function, :_, [] | prelude] ++ [expr]])
     eval([[:function, :_, [] | prelude] ++ [expr]], env)
   end
 
