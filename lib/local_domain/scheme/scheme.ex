@@ -290,10 +290,13 @@ defmodule Anoma.LocalDomain.Scheme do
   """
   def eval(expr) do
     {env, prelude} = default_env()
-    IO.inspect(prelude)
+    # IO.inspect([[:function, :_, [] | prelude] ++ [expr]])
     eval([[:function, :_, [] | prelude] ++ [expr]], env)
   end
 
+  @doc """
+  Turn an Elixir AST to Scheme
+  """
   def ast_to_scheme(n) when is_integer(n) do
     n
   end

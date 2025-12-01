@@ -389,7 +389,7 @@ defmodule Examples.ETranspile do
     {state, block, Transpile.program_to_string(block)}
   end
 
-  # let input = Sexpr::from((0..100).map(|x| Sexpr::from(2 * x + 1)).collect::<Vec::<_>>());
+  # let input = Resource { data: Sexpr::from((0..100).map(|x| Sexpr::from(2 * x + 1)).collect::<Vec::<_>>()), quantity: 0 };
   # let output: Sexpr = receipt.journal.decode().unwrap();
   def transpile_string_literals() do
     state = Transpile.new()
@@ -433,12 +433,27 @@ defmodule Examples.ETranspile do
     {state, block, Transpile.program_to_string(block)}
   end
 
+  # let input = Resource { data: Sexpr::from(3), quantity: 1 };
+  # let output: Sexpr = receipt.journal.decode().unwrap();
   def transpile_integer_logic() do
     state = Transpile.new()
     {state, block} = Transpile.transpile(state,
       [
-        
+        [
+          :function,
+          :integer_resource_logic,
+          [:obj],
+          [:is_integer, [:get, :obj, "data"]]
+        ],
+        [
+          :function,
+          :scm_main,
+          [],
+          [:commit_sexpr, [:boolean, [:integer_resource_logic, [:read_resource]]]]
+        ]
       ])
+
+    {state, block, Transpile.program_to_string(block)}
     
   end
 end
