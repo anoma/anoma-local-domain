@@ -27,7 +27,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
       is_number: {:native, :erlang, :is_number},
       car: {:native, Anoma.LocalDomain.SchemeRegistry, :car},
       cdr: {:native, Anoma.LocalDomain.SchemeRegistry, :cdr},
-      cons: {:native, Anoma.LocalDomain.SchemeRegistry, :cons}
+      cons: {:native, Anoma.LocalDomain.SchemeRegistry, :cons},
+      null: [],
     }
 
     std =

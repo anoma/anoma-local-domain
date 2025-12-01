@@ -170,16 +170,6 @@ defmodule Anoma.LocalDomain.Scheme do
     end
   end
 
-  def eval([:and, expr1, expr2], env) do
-    eval([:if, expr1, expr2, false], env)
-  end
-
-  def eval([:or, expr1, expr2], env) do
-    eval([:if, expr1, true, expr2], env)
-  end
-
-  def eval([:list | args], env), do: Enum.map_reduce(args, env, &eval/2)
-
   def eval([:quote, expr], env), do: {expr, env}
 
   def eval([:function, name, params | body], env) do
@@ -189,11 +179,34 @@ defmodule Anoma.LocalDomain.Scheme do
     {closure, env}
   end
 
+  # Define evaluate by reducing to simpler expressions
+
+  def eval([:and, expr1, expr2], env) do
+    eval([:if, expr1, expr2, false], env)
+  end
+
+  def eval([:or, expr1, expr2], env) do
+    eval([:if, expr1, true, expr2], env)
+  end
+
+  def eval([:list | args], env) do
+    expansion = Enum.reduce(Enum.reverse(args), :null, fn elt, acc -> [:cons, elt, acc] end)
+    eval(expansion, env)
+  end
+
   def eval([:apply, op, args], env) do
     {args, env} = eval(args, env)
     {op, env} = eval(op, env)
     eval_apply(op, args, env)
   end
+
+  def eval([op | args], env) do
+    {args, env} = Enum.map_reduce(args, env, &eval/2)
+    {op, env} = eval(op, env)
+    eval_apply(op, args, env)
+  end
+
+  # Apply the given arguments to the given function
 
   def eval_apply({:closure, params, body, closure_env_id}, args, env) do
     caller_env_id = env_id(env)
@@ -211,8 +224,6 @@ defmodule Anoma.LocalDomain.Scheme do
   def eval_apply({:native, module, functor}, args, env) do
     {apply(module, functor, args), env}
   end
-
-  def eval([op | args], env), do: eval([:apply, op, [:list | args]], env)
 
   # Evaluate the given expression with a prelude prepended
 
