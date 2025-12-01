@@ -4,7 +4,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
   defscheme length(xs) do
     [
       :if,
-      [:==, :xs, nil],
+      [:is_null, :xs],
       0,
       [:+, 1, [:length, [:cdr, :xs]]]
     ]
@@ -22,8 +22,8 @@ defmodule Anoma.LocalDomain.Scheme.Std do
   defscheme map(xs, f) do
     [
       :if,
-      [:==, :xs, nil],
-      nil,
+      [:is_null, :xs],
+      :null,
       [
         :cons,
         [:f, [:car, :xs]],
@@ -35,8 +35,8 @@ defmodule Anoma.LocalDomain.Scheme.Std do
   defscheme filter(xs, f) do
     [
       :if,
-      [:==, :xs, nil],
-      nil,
+      [:is_null, :xs],
+      :null,
       [
         :if,
         [:f, [:car, :xs]],
@@ -63,7 +63,7 @@ defmodule Anoma.LocalDomain.Scheme.Std do
     [
       :if,
       [:==, :n, 0],
-      nil,
+      :null,
       [
         :cons,
         [:car, :xs],

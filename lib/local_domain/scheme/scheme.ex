@@ -172,8 +172,6 @@ defmodule Anoma.LocalDomain.Scheme do
     end
   end
 
-  def eval([:quote, expr], env), do: {expr, env}
-
   def eval([:function, name, params | body], env) do
     {env, closure_env_id} = reserve_env(env)
     closure = {:closure, params, body, closure_env_id}
