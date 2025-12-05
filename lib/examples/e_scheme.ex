@@ -20,27 +20,27 @@ defmodule Examples.EScheme do
   end
 
   def apply() do
-    {result, _env} = Scheme.eval([:apply, lambda(), [:list, 1]])
+    {result, _env} = Scheme.eval([[:apply, lambda(), [:list, 1]]])
     assert result == 2
     result
   end
 
   def native_plus() do
-    {result, _env} = Scheme.eval([:+, 1, 2])
+    {result, _env} = Scheme.eval([[:+, 1, 2]])
     assert result == 3
     result
   end
 
   def native_at() do
     expr = [:at, list(), 2]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == 3
     result
   end
 
   def map() do
     expr = [:map, list(), lambda()]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == [2, 3, 4]
     result
   end
@@ -52,7 +52,7 @@ defmodule Examples.EScheme do
       [:map, [:list, 1], [:function, :_, [:x], [:+, :x, 1]]]
     ]
 
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == 3
     result
   end
@@ -79,7 +79,7 @@ defmodule Examples.EScheme do
       ]
     ]
 
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == true
     result
   end
@@ -87,43 +87,43 @@ defmodule Examples.EScheme do
   def filter() do
     filter = [:function, :_, [:x], [:==, :x, 1]]
     expr = [:filter, list(), filter]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == [1]
     result
   end
 
   def nthcdr() do
     expr = [:nthcdr, list(), 2]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == [3]
     result
   end
 
   def take() do
     expr = [:take, list(), 2]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == [1, 2]
     result
   end
 
   def get() do
-    result = Scheme.eval([:get, dict(), "a"])
+    result = Scheme.eval([[:get, dict(), "a"]])
     result
   end
 
   def put() do
-    result = Scheme.eval([:put, dict(), "b", 1])
+    result = Scheme.eval([[:put, dict(), "b", 1]])
     result
   end
 
   def car() do
-    {result, _env} = Scheme.eval([:car, list()])
+    {result, _env} = Scheme.eval([[:car, list()]])
     assert result == 1
     result
   end
 
   def cdr() do
-    {result, _env} = Scheme.eval([:cdr, list()])
+    {result, _env} = Scheme.eval([[:cdr, list()]])
     assert result == [2, 3]
     result
   end

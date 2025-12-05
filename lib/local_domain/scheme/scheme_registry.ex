@@ -29,7 +29,9 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
       cdr: {:native, Kernel, :tl},
       null: [],
       cons: {:native, Anoma.LocalDomain.SchemeRegistry, :cons},
-      is_null: {:native, Anoma.LocalDomain.SchemeRegistry, :is_null}
+      is_null: {:native, Anoma.LocalDomain.SchemeRegistry, :is_null},
+      atom_to_string: {:native, Macro, :to_string},
+      string_to_atom: {:native, Code, :string_to_quoted!}
     }
 
     std =

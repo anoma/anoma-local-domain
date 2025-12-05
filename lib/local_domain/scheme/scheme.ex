@@ -132,11 +132,17 @@ defmodule Anoma.LocalDomain.Scheme do
   @doc """
   Add functions to the environment
   """
-  def build_body_env([:function, name, params | body], {env, body_env_id}) do
+  def bind_function([:function, name, params | body], {env, body_env_id}) do
     {put_env(env, name, {:closure, params, body, body_env_id}), body_env_id}
   end
 
-  def build_body_env(_, acc), do: acc
+  def bind_function(_, acc), do: acc
+
+  def build_body_env(body, callee_env) do
+    {callee_env, body_env_id} = reserve_env(callee_env)
+    {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &bind_function/2)
+    insert_env(callee_env, body_env_id, nil, nil)
+  end
 
   # Guards to recognize special values in the DSL
 
@@ -212,9 +218,7 @@ defmodule Anoma.LocalDomain.Scheme do
     put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
     callee_env = Enum.reduce(Enum.zip(params, args), callee_env, put_env)
     # Bind mutually recursive functions in the body
-    {callee_env, body_env_id} = reserve_env(callee_env)
-    {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
-    callee_env = insert_env(callee_env, body_env_id, nil, nil)
+    callee_env = build_body_env(body, callee_env)
     # Evaluate the body expressions
     eval = fn expr, {_result, call_env} -> eval(expr, call_env) end
     {result, env} = Enum.reduce(body, {nil, callee_env}, eval)
@@ -226,14 +230,44 @@ defmodule Anoma.LocalDomain.Scheme do
     {apply(module, functor, args), env}
   end
 
+  # Recursively expand macros
+
+  def expand_macros(expr = [:expand, reference | _], env) do
+    {reference, env} = eval(reference, env)
+    {expansion, env} = eval_apply(reference, [expr], env)
+    expand_macros(expansion, env)
+  end
+
+  def expand_macros(expr, env) when is_list(expr) do
+    Enum.map_reduce(expr, env, &expand_macros/2)
+  end
+
+  def expand_macros(expr, env), do: {expr, env}
+
+  # Recursively expand tuples to lists
+
+  def expand_tuples(expr) when is_tuple(expr) do
+    expand_tuples([:expand | Tuple.to_list(expr)])
+  end
+
+  def expand_tuples(expr) when is_list(expr) do
+    Enum.map(expr, &expand_tuples/1)
+  end
+
+  def expand_tuples(expr), do: expr
+
   # Evaluate the given expression with a prelude prepended
 
   @doc """
   Evaluate the given expression with a prelude prepended
   """
-  def eval(expr) do
+  def eval(exprs) do
     {env, prelude} = default_env()
-    eval([[:function, :_, [] | prelude] ++ [expr]], env)
+    exprs = prelude ++ exprs
+    exprs = Enum.map(exprs, &expand_tuples/1)
+    funcs = build_body_env(exprs, env)
+    {exprs, _} = Enum.map_reduce(exprs, funcs, &expand_macros/2)
+    eval([[:function, :_, [] | exprs]], env)
   end
 
   @doc """

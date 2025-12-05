@@ -37,7 +37,7 @@ defmodule Examples.EAction do
     logic = Map.get(obj, "logic")
 
     {result, _env} =
-      Anoma.LocalDomain.Scheme.eval([
+      Anoma.LocalDomain.Scheme.eval([[
         :apply,
         logic,
         [
@@ -46,7 +46,7 @@ defmodule Examples.EAction do
           unit,
           consumed?
         ]
-      ])
+      ]])
 
     assert result == true
 

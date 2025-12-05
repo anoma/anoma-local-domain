@@ -72,29 +72,47 @@ defmodule Anoma.LocalDomain.Scheme.Std do
     ]
   end
 
+  defscheme cadr(sexpr) do
+    [:car, [:cdr, :sexpr]]
+  end
+
+  defscheme caddr(sexpr) do
+    [:cadr, [:cdr, :sexpr]]
+  end
+
+  defscheme cadddr(sexpr) do
+    [:caddr, [:cdr, :sexpr]]
+  end
+
+  defscheme let(sexpr) do
+    [:cons,
+     [:cons,
+      [:string_to_atom, ":function"],
+      [:cons, [:string_to_atom, ":let_aux"],
+       [:cons,
+        [:map, [:caddr, :sexpr], :car],
+        [:cons, [:cadddr, :sexpr], :null]]]],
+     [:map, [:caddr, :sexpr], :cadr]]
+  end
+
   defscheme apply(fun, args) do
     [:if, [:is_null, :args],
      [:fun],
-     [[:function, :_, [:arg0, :args],
+     {:let, [[:arg0, [:car, :args]], [:args, [:cdr, :args]]],
        [:if, [:is_null, :args],
         [:fun, :arg0],
-        [[:function, :_, [:arg1, :args],
+        {:let, [[:arg1, [:car, :args]], [:args, [:cdr, :args]]],
           [:if, [:is_null, :args],
            [:fun, :arg0, :arg1],
-           [[:function, :_, [:arg2, :args],
+           {:let, [[:arg2, [:car, :args]], [:args, [:cdr, :args]]],
              [:if, [:is_null, :args],
               [:fun, :arg0, :arg1, :arg2],
-              [[:function, :_, [:arg3, :args],
+              {:let, [[:arg3, [:car, :args]], [:args, [:cdr, :args]]],
                 [:if, [:is_null, :args],
                  [:fun, :arg0, :arg1, :arg2, :arg3],
-                 [[:function, :_, [:arg4, :args],
+                 {:let, [[:arg4, [:car, :args]], [:args, [:cdr, :args]]],
                    [:if, [:is_null, :args],
                     [:fun, :arg0, :arg1, :arg2, :arg3, :arg4],
-                    [:fun, :arg0, :arg1, :arg2, :arg3, :arg4, :args]]
-                 ], [:car, :args], [:cdr, :args]]]
-              ], [:car, :args], [:cdr, :args]]]
-           ], [:car, :args], [:cdr, :args]]]
-        ], [:car, :args], [:cdr, :args]]]
-     ], [:car, :args], [:cdr, :args]]]
+                    [:fun, :arg0, :arg1, :arg2, :arg3, :arg4, :args]]}]}]}]}]}]
   end
 end
