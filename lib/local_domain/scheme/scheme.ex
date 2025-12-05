@@ -232,9 +232,21 @@ defmodule Anoma.LocalDomain.Scheme do
 
   # Recursively expand macros
 
+  def expand_macros({:closure, params, body, closure_env_id}, env) do
+    {body, env} = expand_macros(body, env)
+    {{:closure, params, body, closure_env_id}, env}
+  end
+
   def expand_macros(expr = [:expand, reference | _], env) do
+    # Expand the macros in the reference expression
+    {reference, env} = expand_macros(reference, env)
+    # Evaluate the reference expression - this should result in a function
     {reference, env} = eval(reference, env)
+    # Expand the macros used in the value of the reference expression
+    {reference, env} = expand_macros(reference, env)
+    # Apply the reference expression to representation of this expression
     {expansion, env} = eval_apply(reference, [expr], env)
+    # Finally, attempt to expand the output of the macro
     expand_macros(expansion, env)
   end
 
@@ -263,10 +275,17 @@ defmodule Anoma.LocalDomain.Scheme do
   """
   def eval(exprs) do
     {env, prelude} = default_env()
+    # Add the top-level functions to the prelude
     exprs = prelude ++ exprs
+    # Remove the syntactic sugar for macros
     exprs = Enum.map(exprs, &expand_tuples/1)
-    funcs = build_body_env(exprs, env)
-    {exprs, _} = Enum.map_reduce(exprs, funcs, &expand_macros/2)
+    # Create an environment where all macros are bound
+    macro_env = build_body_env(exprs, env)
+    # Expand all macro calls, macro environment not needed afterwards
+    {exprs, _} = Enum.map_reduce(exprs, macro_env, &expand_macros/2)
+    # Create new environment where all bindings have been expanded
+    env = build_body_env(exprs, env)
+    # Finally evaluate the expanded expressions in the context of an expanded environment
     eval([[:function, :_, [] | exprs]], env)
   end
 

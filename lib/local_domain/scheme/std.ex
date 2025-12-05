@@ -84,15 +84,46 @@ defmodule Anoma.LocalDomain.Scheme.Std do
     [:caddr, [:cdr, :sexpr]]
   end
 
-  defscheme let(sexpr) do
-    [:cons,
-     [:cons,
-      [:string_to_atom, ":function"],
-      [:cons, [:string_to_atom, ":let_aux"],
+  defscheme cdddr(sexpr) do
+    [:cddr, [:cdr, :sexpr]]
+  end
+
+  defscheme cddr(sexpr) do
+    [:cdr, [:cdr, :sexpr]]
+  end
+
+  defscheme quote_aux(sexpr) do
+    [:if, [:is_null, :sexpr],
+     [:string_to_atom, ":null"],
+     [:if, [:is_pair, :sexpr],
+      [:if,
+       [:if, [:==, [:car, :sexpr], [:string_to_atom, ":unquote"]],
+        [:is_null, [:cddr, :sexpr]],
+        false],
+       [:cadr, :sexpr],
        [:cons,
-        [:map, [:caddr, :sexpr], :car],
-        [:cons, [:cadddr, :sexpr], :null]]]],
-     [:map, [:caddr, :sexpr], :cadr]]
+        [:string_to_atom, ":cons"],
+        [:cons,
+         [:quote_aux, [:car, :sexpr]],
+         [:cons, [:quote_aux, [:cdr, :sexpr]], :null]]]],
+      [:cons,
+       [:string_to_atom, ":string_to_atom"],
+       [:cons, [:atom_to_string, :sexpr], :null]]]]
+  end
+
+  defscheme quote(sexpr) do
+    [:quote_aux, [:caddr, :sexpr]]
+  end
+
+  defscheme let(sexpr) do
+    {:quote,
+     [[:function, :let_aux,
+       # binding names
+       [:unquote, [:map, [:caddr, :sexpr], :car]],
+       # body
+       :unquote, [:cdddr, :sexpr]],
+      # binding values
+      :unquote, [:map, [:caddr, :sexpr], :cadr]]}
   end
 
   defscheme apply(fun, args) do

@@ -31,7 +31,8 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
       cons: {:native, Anoma.LocalDomain.SchemeRegistry, :cons},
       is_null: {:native, Anoma.LocalDomain.SchemeRegistry, :is_null},
       atom_to_string: {:native, Macro, :to_string},
-      string_to_atom: {:native, Code, :string_to_quoted!}
+      string_to_atom: {:native, Code, :string_to_quoted!},
+      is_pair: {:native, Anoma.LocalDomain.SchemeRegistry, :is_pair}
     }
 
     std =
@@ -45,6 +46,10 @@ defmodule Anoma.LocalDomain.SchemeRegistry do
   def is_null(obj), do: obj == []
 
   def cons(head, tail), do: [head | tail]
+
+  def is_pair([_ | _]), do: true
+
+  def is_pair(_), do: false
 
   @doc """
   Register all elixir->scheme mappings in a process.
