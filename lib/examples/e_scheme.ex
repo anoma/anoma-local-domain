@@ -75,25 +75,20 @@ defmodule Examples.EScheme do
     expr = [
       [
         :function,
-        :_,
-        [],
-        [
-          :function,
-          :odd,
-          [:n],
-          [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]
-        ],
-        [
-          :function,
-          :even,
-          [:n],
-          [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]
-        ],
-        [:even, 8]
-      ]
+        :odd,
+        [:n],
+        [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]
+      ],
+      [
+        :function,
+        :even,
+        [:n],
+        [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]
+      ],
+      [:even, 8]
     ]
 
-    {result, _env} = Scheme.eval([expr])
+    {result, _env} = Scheme.eval(expr)
     assert result == true
     result
   end

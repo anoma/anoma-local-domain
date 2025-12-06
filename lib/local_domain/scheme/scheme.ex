@@ -72,51 +72,75 @@ defmodule Anoma.LocalDomain.Scheme do
     end), prelude_fns}
   end
 
-  def new_env(), do: {%{}, 0, 1}
-
+  def new_env(), do: {%{}, 0, 1, 0}
 
   @doc """
   Put a given binding into the environment
   """
-  def put_env({tree, index, next}, name, value) do
-    {Map.put(tree, next, {name, value, index}), next, next+1}
+  def put_env({tree, index, next, frame}, name, value) do
+    {Map.put(tree, next, {name, value, index, frame}), next, next+1, frame}
   end
 
   @doc """
   Get the value of the given identifier in the environment
   """
-  def get_env({tree, index, next}, search_name) do
+  def get_env({tree, index, next, frame}, search_name) do
     case Map.fetch(tree, index) do
-      {:ok, {^search_name, value, _parent}} -> value
-      {:ok, {_name, _value, parent}} -> get_env({tree, parent, next}, search_name)
+      {:ok, {^search_name, value, _parent, _frame}} -> value
+      {:ok, {_name, _value, parent, _frame}} -> get_env({tree, parent, next, frame}, search_name)
       :error -> raise "#{search_name} not in scope"
+    end
+  end
+
+  @doc """
+  Switch to the given stack frame
+  """
+  def switch_env_frame({tree, index, next, frame}, target) do
+    case Map.fetch(tree, index) do
+      {:ok, {_name, _value, _parent, ^target}} -> {tree, index, next, frame}
+      {:ok, {_name, _value, parent, _frame}} -> switch_env_frame({tree, parent, next, frame}, target)
+      :error -> raise "frame #{target} not in scope"
     end
   end
 
   @doc """
   Get the unique identifier for the given environment
   """
-  def env_id({_tree, index, _next}), do: index
+  def env_id({_tree, index, _next, _frame}), do: index
 
   @doc """
   Reserve a unique environment identifier to fill in later
   """
-  def reserve_env({tree, index, next}) do
-    {{tree, index, next+1}, next}
+  def reserve_env({tree, index, next, frame}) do
+    {{tree, index, next+1, frame}, next}
   end
 
   @doc """
   Insert the given binding at the given unique identifier
   """
-  def insert_env({tree, index, next}, at, name, value) do
-    {Map.put(tree, at, {name, value, index}), at, next}
+  def insert_env({tree, index, next, frame}, at, name, value) do
+    {Map.put(tree, at, {name, value, index, frame}), at, next, frame}
   end
 
   @doc """
   Switch to the given environment
   """
-  def switch_env({tree, _index, next}, target) do
-    {tree, target, next}
+  def switch_env({tree, _index, next, frame}, target) do
+    {tree, target, next, frame}
+  end
+
+  @doc """
+  Push new stack frame onto the environment
+  """
+  def push_env_frame({tree, index, next, frame}) do
+    {tree, index, next, frame+1}
+  end
+
+  @doc """
+  Pop stack frame from the environment
+  """
+  def pop_env_frame({tree, index, next, frame}) do
+    {tree, index, next, frame-1}
   end
 
   @doc """
@@ -185,7 +209,14 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def eval(expr = [:expand | _], env) do
-    eval(elem(expand_macros(expr, env), 0), env)
+    # Save the environment just before macro expansion
+    expansion_env_id = env_id(env)
+    # Macro expansion cannot access locals - switch to global environment
+    macro_env = switch_env_frame(env, 0)
+    # Expand the macro in the global environment
+    {expansion, macro_env} = expand_macros(expr, macro_env)
+    # Finally evaluate the expanded macro in original environment
+    eval(expansion, switch_env(macro_env, expansion_env_id))
   end
 
   # Define evaluate by reducing to simpler expressions
@@ -217,6 +248,7 @@ defmodule Anoma.LocalDomain.Scheme do
     caller_env_id = env_id(env)
     # Move to the closure/callee's environment
     callee_env = switch_env(env, closure_env_id)
+    callee_env = push_env_frame(callee_env)
     # Bind the closure's parameters
     put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
     callee_env = Enum.reduce(Enum.zip(params, args), callee_env, put_env)
@@ -226,6 +258,7 @@ defmodule Anoma.LocalDomain.Scheme do
     eval = fn expr, {_result, call_env} -> eval(expr, call_env) end
     {result, env} = Enum.reduce(body, {nil, callee_env}, eval)
     # Move back to the caller's environment
+    env = pop_env_frame(env)
     {result, switch_env(env, caller_env_id)}
   end
 
@@ -234,11 +267,6 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   # Recursively expand macros
-
-  def expand_macros({:closure, params, body, closure_env_id}, env) do
-    {body, env} = expand_macros(body, env)
-    {{:closure, params, body, closure_env_id}, env}
-  end
 
   def expand_macros(expr = [:expand, reference | _], env) do
     # Evaluate the reference expression - this should result in a function
