@@ -31,6 +31,20 @@ defmodule Examples.EScheme do
     result
   end
 
+  def and_macro() do
+    {false, _env} = Scheme.eval([{:andm, :true, :false}])
+    {true, _env} = Scheme.eval([{:andm, :true, :true, :true}])
+    {false, _env} = Scheme.eval([{:andm, :false, :true}])
+    {false, _env} = Scheme.eval([{:andm, :false, :false}])
+  end
+
+  def or_macro() do
+    {true, _env} = Scheme.eval([{:orm, :true, :false}])
+    {true, _env} = Scheme.eval([{:orm, :true, :true, :true}])
+    {true, _env} = Scheme.eval([{:orm, :false, :true}])
+    {false, _env} = Scheme.eval([{:orm, :false, :false}])
+  end
+
   def native_at() do
     expr = [:at, list(), 2]
     {result, _env} = Scheme.eval([expr])

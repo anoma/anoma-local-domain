@@ -92,27 +92,25 @@ defmodule Anoma.LocalDomain.Scheme.Std do
     [:cdr, [:cdr, :sexpr]]
   end
 
-  defscheme quote_aux(sexpr) do
-    [:if, [:is_null, :sexpr],
-     [:string_to_atom, ":null"],
-     [:if, [:is_pair, :sexpr],
-      [:if,
-       [:if, [:==, [:car, :sexpr], [:string_to_atom, ":unquote"]],
-        [:is_null, [:cddr, :sexpr]],
-        false],
-       [:cadr, :sexpr],
-       [:cons,
-        [:string_to_atom, ":cons"],
-        [:cons,
-         [:quote_aux, [:car, :sexpr]],
-         [:cons, [:quote_aux, [:cdr, :sexpr]], :null]]]],
-      [:cons,
-       [:string_to_atom, ":string_to_atom"],
-       [:cons, [:atom_to_string, :sexpr], :null]]]]
-  end
-
   defscheme quote(sexpr) do
-    [:quote_aux, [:caddr, :sexpr]]
+    [[:function, :quote_aux, [:sexpr],
+      [:if, [:is_null, :sexpr],
+       [:string_to_atom, ":null"],
+       [:if, [:is_pair, :sexpr],
+        [:if,
+         [:if, [:==, [:car, :sexpr], [:string_to_atom, ":unquote"]],
+          [:is_null, [:cddr, :sexpr]],
+          false],
+         [:cadr, :sexpr],
+         [:cons,
+          [:string_to_atom, ":cons"],
+          [:cons,
+           [:quote_aux, [:car, :sexpr]],
+           [:cons, [:quote_aux, [:cdr, :sexpr]], :null]]]],
+        [:cons,
+         [:string_to_atom, ":string_to_atom"],
+         [:cons, [:atom_to_string, :sexpr], :null]]]]
+    ], [:caddr, :sexpr]]
   end
 
   defscheme let(sexpr) do
@@ -124,6 +122,26 @@ defmodule Anoma.LocalDomain.Scheme.Std do
        :unquote, [:cdddr, :sexpr]],
       # binding values
       :unquote, [:map, [:caddr, :sexpr], :cadr]]}
+  end
+
+  defscheme andm(sexpr) do
+    [[:function, :andm_aux, [:sexpr],
+      [:if, [:is_null, :sexpr],
+       [:string_to_atom, ":true"],
+       {:quote,
+        {:let, [[:and_temp, [:unquote, [:car, :sexpr]]]],
+         [:if, :and_temp, [:unquote, [:andm_aux, [:cdr, :sexpr]]], :and_temp]}}]
+    ], [:cddr, :sexpr]]
+  end
+
+  defscheme orm(sexpr) do
+    [[:function, :orm_aux, [:sexpr],
+      [:if, [:is_null, :sexpr],
+       [:string_to_atom, ":false"],
+       {:quote,
+        {:let, [[:or_temp, [:unquote, [:car, :sexpr]]]],
+         [:if, :or_temp, :or_temp, [:unquote, [:orm_aux, [:cdr, :sexpr]]]]}}]
+    ], [:cddr, :sexpr]]
   end
 
   defscheme apply(fun, args) do

@@ -86,11 +86,10 @@ defmodule Anoma.LocalDomain.Scheme do
   Get the value of the given identifier in the environment
   """
   def get_env({tree, index, next}, search_name) do
-    {name, value, parent} = Map.fetch!(tree, index)
-    if name == search_name do
-      value
-    else
-      get_env({tree, parent, next}, search_name)
+    case Map.fetch(tree, index) do
+      {:ok, {^search_name, value, _parent}} -> value
+      {:ok, {_name, _value, parent}} -> get_env({tree, parent, next}, search_name)
+      :error -> raise "#{search_name} not in scope"
     end
   end
 
@@ -146,9 +145,9 @@ defmodule Anoma.LocalDomain.Scheme do
 
   # Guards to recognize special values in the DSL
 
-  defguard is_closure(obj) when is_tuple(obj) and length(obj) == 4 and elem(obj, 0) == :closure
+  defguard is_closure(obj) when is_tuple(obj) and tuple_size(obj) == 4 and elem(obj, 0) == :closure
 
-  defguard is_native(obj) when is_tuple(obj) and length(obj) == 3 and elem(obj, 0) == :native
+  defguard is_native(obj) when is_tuple(obj) and tuple_size(obj) == 3 and elem(obj, 0) == :native
 
   # Evaluate the given expression in the given environment
 
@@ -183,6 +182,10 @@ defmodule Anoma.LocalDomain.Scheme do
     closure = {:closure, params, body, closure_env_id}
     env = insert_env(env, closure_env_id, name, closure)
     {closure, env}
+  end
+
+  def eval(expr = [:expand | _], env) do
+    eval(elem(expand_macros(expr, env), 0), env)
   end
 
   # Define evaluate by reducing to simpler expressions
@@ -238,12 +241,8 @@ defmodule Anoma.LocalDomain.Scheme do
   end
 
   def expand_macros(expr = [:expand, reference | _], env) do
-    # Expand the macros in the reference expression
-    {reference, env} = expand_macros(reference, env)
     # Evaluate the reference expression - this should result in a function
     {reference, env} = eval(reference, env)
-    # Expand the macros used in the value of the reference expression
-    {reference, env} = expand_macros(reference, env)
     # Apply the reference expression to representation of this expression
     {expansion, env} = eval_apply(reference, [expr], env)
     # Finally, attempt to expand the output of the macro
