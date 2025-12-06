@@ -8,7 +8,7 @@ defmodule Examples.EScheme do
   defrisc(inc(x), do: :erlang.+(x, 1))
 
   def list() do
-    [:list, 1, 2, 3]
+    {:list, 1, 2, 3}
   end
 
   def dict() do

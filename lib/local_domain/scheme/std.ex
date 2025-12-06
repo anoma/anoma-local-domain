@@ -144,6 +144,15 @@ defmodule Anoma.LocalDomain.Scheme.Std do
     ], [:cddr, :sexpr]]
   end
 
+  defscheme list(sexpr) do
+    [[:function, :list_aux, [:sexpr],
+      [:if, [:is_null, :sexpr],
+       [:string_to_atom, ":null"],
+       {:quote,
+        [:cons, [:unquote, [:car, :sexpr]], [:unquote, [:list_aux, [:cdr, :sexpr]]]]}]
+    ], [:cddr, :sexpr]]
+  end
+
   defscheme apply(fun, args) do
     [:if, [:is_null, :args],
      [:fun],
