@@ -22,6 +22,7 @@ defmodule Anoma.LocalDomain.ApplicationStartup do
       Anoma.LocalDomain.Application.register(module, args)
     end
 
+    GtBridge.View.register(Anoma.LocalDomain.Views)
     :ignore
   end
 end
