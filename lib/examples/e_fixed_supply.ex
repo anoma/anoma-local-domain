@@ -28,6 +28,10 @@ defmodule Examples.EFixedSupply do
   end
 
   def transact_fixed_supply() do
+    Anoma.LocalDomain.SchemeRegistry.register(
+      Anoma.LocalDomain.FixedSupply
+    )
+
     fixed_supply = %FixedSupply{supply_quantity: 1000, quantity: 500}
 
     transaction =
@@ -48,28 +52,31 @@ defmodule Examples.EFixedSupply do
     transaction = transact_fixed_supply()
     obj = hd(transaction.consumed)
     logic = Anoma.LocalDomain.Resource.compile_logic(obj)
-    apply(logic, [obj, transaction, true])
+    result = apply(logic, [obj, transaction, true])
+
+    assert result == true
+    
+    result
   end
 
   def interpret_fixed_supply_scheme() do
     transaction = transact_fixed_supply()
     unit = Action.to_scheme(transaction)
-    # IO.inspect(unit)
-    obj = Enum.at(Map.get(unit, :consumed), 1)
+    obj = Enum.at(Map.get(unit, "consumed"), 1)
     consumed? = true
-    logic = Map.get(obj, :logic)
-
-    result =
-      Anoma.LocalDomain.Scheme.eval([
-        "apply",
+    logic = Map.get(obj, "logic")
+    
+    {result, _env} =
+      Anoma.LocalDomain.Scheme.eval([[
+        :apply,
         logic,
         [
-          "list",
+          :list,
           obj,
           unit,
           consumed?
         ]
-      ])
+      ]])
 
     assert result == true
 
@@ -86,21 +93,21 @@ defmodule Examples.EFixedSupply do
   def interpret_quantity_scheme() do
     transaction = transact_fixed_supply()
     unit = Action.to_scheme(transaction)
-    obj = Enum.at(Map.get(unit, :created), 1)
+    obj = Enum.at(Map.get(unit, "created"), 1)
     consumed? = false
-    logic = Map.get(obj, :logic)
+    logic = Map.get(obj, "logic")
 
-    result =
-      Anoma.LocalDomain.Scheme.eval([
-        "apply",
+    {result, _env} =
+      Anoma.LocalDomain.Scheme.eval([[
+        :apply,
         logic,
         [
-          "list",
+          :list,
           obj,
           unit,
           consumed?
         ]
-      ])
+      ]])
 
     assert result == true
 

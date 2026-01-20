@@ -20,11 +20,12 @@ defmodule Examples.EResource do
   def scheme_resource_int() do
     r = ObjToResource.scheme(obj_to_resource_int())
 
-    assert r[:logic] ==
+    assert r["logic"] ==
              [
-               "lambda",
-               ["obj", "_instance", "_consumedp"],
-               ["integer?", ["get", "obj", :data]]
+               :function,
+               :_,
+               [:obj, :_instance, :_consumedp],
+               [:is_integer, [:get, :obj, "data"]]
              ]
 
     r
@@ -38,7 +39,7 @@ defmodule Examples.EResource do
 
   def scheme_resource_built_in() do
     r = ObjToResource.scheme(obj_to_resource_built_in())
-    assert Map.get(r, :data) == "+"
+    assert Map.get(r, "data") == :+
     r
   end
 
@@ -62,14 +63,14 @@ defmodule Examples.EResource do
 
   def scheme_built_in() do
     r = ObjToResource.scheme(&Kernel.+/2)
-    assert r == "+"
+    assert r == :+
     r
   end
 
   def scheme_fn() do
-    {"closure", params, body} =
+    :inc =
       ObjToResource.scheme(&Examples.EScheme.inc/1)
 
-    {"closure", params, body}
+    :inc
   end
 end

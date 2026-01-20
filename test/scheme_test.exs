@@ -1,8 +1,12 @@
 defmodule SchemeTest do
+  alias Anoma.LocalDomain.SchemeRegistry
   use ExUnit.Case
   doctest Anoma.LocalDomain.Scheme
 
   # Examples.EScheme.__after_compile__([], [])
+
+  SchemeRegistry.register(Anoma.LocalDomain.Scheme.Std)
+  SchemeRegistry.register(Examples.EScheme)
 
   test "Run the examples" do
     Examples.EScheme.list()
@@ -10,9 +14,12 @@ defmodule SchemeTest do
     Examples.EScheme.lambda()
     Examples.EScheme.apply()
     Examples.EScheme.native_plus()
-    Examples.EScheme.native_nth()
+    Examples.EScheme.and_macro()
+    Examples.EScheme.or_macro()
+    Examples.EScheme.native_at()
     Examples.EScheme.map()
     Examples.EScheme.apply_map()
+    Examples.EScheme.mutual_recursion()
     Examples.EScheme.filter()
     Examples.EScheme.nthcdr()
     Examples.EScheme.take()
