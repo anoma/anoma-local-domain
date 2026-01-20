@@ -14,6 +14,8 @@ defmodule SchemeTest do
     Examples.EScheme.lambda()
     Examples.EScheme.apply()
     Examples.EScheme.native_plus()
+    Examples.EScheme.and_macro()
+    Examples.EScheme.or_macro()
     Examples.EScheme.native_at()
     Examples.EScheme.map()
     Examples.EScheme.apply_map()

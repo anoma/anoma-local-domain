@@ -8,7 +8,7 @@ defmodule Examples.EScheme do
   defrisc(inc(x), do: :erlang.+(x, 1))
 
   def list() do
-    [:list, 1, 2, 3]
+    {:list, 1, 2, 3}
   end
 
   def dict() do
@@ -20,28 +20,42 @@ defmodule Examples.EScheme do
   end
 
   def apply() do
-    {result, _env} = Scheme.eval([:apply, lambda(), [:list, 1]])
+    {result, _env} = Scheme.eval([[:apply, lambda(), [:list, 1]]])
     assert result == 2
     result
   end
 
   def native_plus() do
-    {result, _env} = Scheme.eval([:+, 1, 2])
+    {result, _env} = Scheme.eval([[:+, 1, 2]])
     assert result == 3
     result
   end
 
+  def and_macro() do
+    {false, _env} = Scheme.eval([{:andm, :true, :false}])
+    {true, _env} = Scheme.eval([{:andm, :true, :true, :true}])
+    {false, _env} = Scheme.eval([{:andm, :false, :true}])
+    {false, _env} = Scheme.eval([{:andm, :false, :false}])
+  end
+
+  def or_macro() do
+    {true, _env} = Scheme.eval([{:orm, :true, :false}])
+    {true, _env} = Scheme.eval([{:orm, :true, :true, :true}])
+    {true, _env} = Scheme.eval([{:orm, :false, :true}])
+    {false, _env} = Scheme.eval([{:orm, :false, :false}])
+  end
+
   def native_at() do
     expr = [:at, list(), 2]
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == 3
     result
   end
 
   def map() do
     expr = [:map, list(), lambda()]
-    {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 2, 3, 4]
+    {result, _env} = Scheme.eval([expr])
+    assert result == [2, 3, 4]
     result
   end
 
@@ -52,7 +66,7 @@ defmodule Examples.EScheme do
       [:map, [:list, 1], [:function, :_, [:x], [:+, :x, 1]]]
     ]
 
-    {result, _env} = Scheme.eval(expr)
+    {result, _env} = Scheme.eval([expr])
     assert result == 3
     result
   end
@@ -61,22 +75,17 @@ defmodule Examples.EScheme do
     expr = [
       [
         :function,
-        :_,
-        [],
-        [
-          :function,
-          :odd,
-          [:n],
-          [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]
-        ],
-        [
-          :function,
-          :even,
-          [:n],
-          [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]
-        ],
-        [:even, 8]
-      ]
+        :odd,
+        [:n],
+        [:if, [:==, :n, 0], false, [:even, [:-, :n, 1]]]
+      ],
+      [
+        :function,
+        :even,
+        [:n],
+        [:if, [:==, :n, 0], true, [:odd, [:-, :n, 1]]]
+      ],
+      [:even, 8]
     ]
 
     {result, _env} = Scheme.eval(expr)
@@ -87,44 +96,44 @@ defmodule Examples.EScheme do
   def filter() do
     filter = [:function, :_, [:x], [:==, :x, 1]]
     expr = [:filter, list(), filter]
-    {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 1]
+    {result, _env} = Scheme.eval([expr])
+    assert result == [1]
     result
   end
 
   def nthcdr() do
     expr = [:nthcdr, list(), 2]
-    {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 3]
+    {result, _env} = Scheme.eval([expr])
+    assert result == [3]
     result
   end
 
   def take() do
     expr = [:take, list(), 2]
-    {result, _env} = Scheme.eval(expr)
-    assert result == [:list, 1, 2]
+    {result, _env} = Scheme.eval([expr])
+    assert result == [1, 2]
     result
   end
 
   def get() do
-    result = Scheme.eval([:get, dict(), "a"])
+    result = Scheme.eval([[:get, dict(), "a"]])
     result
   end
 
   def put() do
-    result = Scheme.eval([:put, dict(), "b", 1])
+    result = Scheme.eval([[:put, dict(), "b", 1]])
     result
   end
 
   def car() do
-    {result, _env} = Scheme.eval([:car, list()])
+    {result, _env} = Scheme.eval([[:car, list()]])
     assert result == 1
     result
   end
 
   def cdr() do
-    {result, _env} = Scheme.eval([:cdr, list()])
-    assert result == [:list, 2, 3]
+    {result, _env} = Scheme.eval([[:cdr, list()]])
+    assert result == [2, 3]
     result
   end
 

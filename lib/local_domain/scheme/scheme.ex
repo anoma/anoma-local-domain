@@ -72,52 +72,75 @@ defmodule Anoma.LocalDomain.Scheme do
     end), prelude_fns}
   end
 
-  def new_env(), do: {%{}, 0, 1}
-
+  def new_env(), do: {%{}, 0, 1, 0}
 
   @doc """
   Put a given binding into the environment
   """
-  def put_env({tree, index, next}, name, value) do
-    {Map.put(tree, next, {name, value, index}), next, next+1}
+  def put_env({tree, index, next, frame}, name, value) do
+    {Map.put(tree, next, {name, value, index, frame}), next, next+1, frame}
   end
 
   @doc """
   Get the value of the given identifier in the environment
   """
-  def get_env({tree, index, next}, search_name) do
-    {name, value, parent} = Map.fetch!(tree, index)
-    if name == search_name do
-      value
-    else
-      get_env({tree, parent, next}, search_name)
+  def get_env({tree, index, next, frame}, search_name) do
+    case Map.fetch(tree, index) do
+      {:ok, {^search_name, value, _parent, _frame}} -> value
+      {:ok, {_name, _value, parent, _frame}} -> get_env({tree, parent, next, frame}, search_name)
+      :error -> raise "#{search_name} not in scope"
+    end
+  end
+
+  @doc """
+  Switch to the given stack frame
+  """
+  def switch_env_frame({tree, index, next, frame}, target) do
+    case Map.fetch(tree, index) do
+      {:ok, {_name, _value, _parent, ^target}} -> {tree, index, next, frame}
+      {:ok, {_name, _value, parent, _frame}} -> switch_env_frame({tree, parent, next, frame}, target)
+      :error -> raise "frame #{target} not in scope"
     end
   end
 
   @doc """
   Get the unique identifier for the given environment
   """
-  def env_id({_tree, index, _next}), do: index
+  def env_id({_tree, index, _next, _frame}), do: index
 
   @doc """
   Reserve a unique environment identifier to fill in later
   """
-  def reserve_env({tree, index, next}) do
-    {{tree, index, next+1}, next}
+  def reserve_env({tree, index, next, frame}) do
+    {{tree, index, next+1, frame}, next}
   end
 
   @doc """
   Insert the given binding at the given unique identifier
   """
-  def insert_env({tree, index, next}, at, name, value) do
-    {Map.put(tree, at, {name, value, index}), at, next}
+  def insert_env({tree, index, next, frame}, at, name, value) do
+    {Map.put(tree, at, {name, value, index, frame}), at, next, frame}
   end
 
   @doc """
   Switch to the given environment
   """
-  def switch_env({tree, _index, next}, target) do
-    {tree, target, next}
+  def switch_env({tree, _index, next, frame}, target) do
+    {tree, target, next, frame}
+  end
+
+  @doc """
+  Push new stack frame onto the environment
+  """
+  def push_env_frame({tree, index, next, frame}) do
+    {tree, index, next, frame+1}
+  end
+
+  @doc """
+  Pop stack frame from the environment
+  """
+  def pop_env_frame({tree, index, next, frame}) do
+    {tree, index, next, frame-1}
   end
 
   @doc """
@@ -132,38 +155,32 @@ defmodule Anoma.LocalDomain.Scheme do
   @doc """
   Add functions to the environment
   """
-  def build_body_env([:function, name, params | body], {env, body_env_id}) do
+  def bind_function([:function, name, params | body], {env, body_env_id}) do
     {put_env(env, name, {:closure, params, body, body_env_id}), body_env_id}
   end
 
-  def build_body_env(_, acc), do: acc
-  
-  def eval(num, env) when is_number(num) do
-    {num, env}
+  def bind_function(_, acc), do: acc
+
+  def build_body_env(body, callee_env) do
+    {callee_env, body_env_id} = reserve_env(callee_env)
+    {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &bind_function/2)
+    insert_env(callee_env, body_env_id, nil, nil)
   end
 
-  def eval(true, env) do
-    {true, env}
-  end
+  # Guards to recognize special values in the DSL
 
-  def eval(false, env) do
-    {false, env}
-  end
+  defguard is_closure(obj) when is_tuple(obj) and tuple_size(obj) == 4 and elem(obj, 0) == :closure
 
-  def eval(nil, env) do
-    {nil, env}
-  end
+  defguard is_native(obj) when is_tuple(obj) and tuple_size(obj) == 3 and elem(obj, 0) == :native
 
-  def eval(str, env) when is_binary(str) do
-    {str, env}
+  # Evaluate the given expression in the given environment
+
+  def eval(obj, env) when is_number(obj) or is_boolean(obj) or is_binary(obj) or is_nil(obj) or is_closure(obj) or is_native(obj) do
+    {obj, env}
   end
 
   def eval(var, env) when is_atom(var) do
     {get_env(env, var), env}
-  end
-
-  def eval(func, env) when is_function(func) do
-    {func, env}
   end
 
   def eval(map, env) when is_map(map) do
@@ -175,123 +192,128 @@ defmodule Anoma.LocalDomain.Scheme do
     {Map.new(map), env}
   end
 
-  def eval({:closure, params, body, closure_env_id}, env) do
-    {{:closure, params, body, closure_env_id}, env}
-  end
-
-  def eval({:native, module, functor}, env) do
-    {{:native, module, functor}, env}
-  end
-
-  def eval([op | args], env) do
-    case op do
-      :if ->
-        {cond, env} = eval(hd(args), env)
-        if cond do
-          eval(Enum.at(args, 1), env)
-        else
-          eval(Enum.at(args, 2), env)
-        end
-
-      :quote ->
-        {hd(args), env}
-
-      :list ->
-        {list, env} = Enum.map_reduce(args, env, fn arg, env -> eval(arg, env) end)
-        {[:list | list], env}
-
-      :car ->
-        case eval(hd(args), env) do
-          {[:list | args], env} -> {hd(args), env}
-          _ -> :err
-        end
-
-      :cdr ->
-        case eval(hd(args), env) do
-          {[:list | args], env} ->
-            if length(args) == 1 do
-              {nil, env}
-            else
-              {[:list | tl(args)], env}
-            end
-
-          _ ->
-            :cdr_err
-        end
-
-      :cons ->
-        {car, env} = eval(hd(args), env)
-
-        case eval(Enum.at(args, 1), env) do
-          {[:list | args], env} -> {[:list, car | args], env}
-          {nil, env} -> {[:list, car], env}
-          _ -> :err
-        end
-
-      :and ->
-        case eval(hd(args), env) do
-          {true, env} -> eval(Enum.at(args, 1), env)
-          {false, env} -> {false, env}
-        end
-
-      :or ->
-        case eval(hd(args), env) do
-          {env, true} -> {true, env}
-          {false, env} -> eval(Enum.at(args, 1), env)
-        end
-
-      :function ->
-        {env, closure_env_id} = reserve_env(env)
-        closure = {:closure, Enum.at(args, 1), tl(tl(args)), closure_env_id}
-        env = insert_env(env, closure_env_id, hd(args), closure)
-        {closure, env}
-        
-        :apply ->
-        [op, args] = args
-
-        {args, env} = eval(args, env)
-
-        case eval(op, env) do
-          {{:closure, params, body, closure_env_id}, env} ->
-            caller_env_id = env_id(env)
-            callee_env =
-              Enum.reduce(
-                Enum.zip(params, tl(args)),
-                switch_env(env, closure_env_id),
-                fn {param, arg}, acc ->
-                  put_env(acc, param, arg)
-                end
-              )
-
-            {callee_env, body_env_id} = reserve_env(callee_env)
-
-            {callee_env, body_env_id} = Enum.reduce(body, {callee_env, body_env_id}, &build_body_env/2)
-
-            callee_env = insert_env(callee_env, body_env_id, nil, nil)
-
-            {result, env} = Enum.reduce(body, {nil, callee_env}, fn expr, {_result, call_env} -> eval(expr, call_env) end)
-
-            {result, switch_env(env, caller_env_id)}
-
-          {{:native, module, functor}, env} ->
-            {apply(module, functor, tl(args)), env}
-
-          _ ->
-            :op_err
-        end
-
-      _ ->
-        eval([:apply, op, [:list | args]], env)
+  def eval([:if, cond, consequent, alternate], env) do
+    {cond, env} = eval(cond, env)
+    if cond do
+      eval(consequent, env)
+    else
+      eval(alternate, env)
     end
   end
+
+  def eval([:function, name, params | body], env) do
+    {env, closure_env_id} = reserve_env(env)
+    closure = {:closure, params, body, closure_env_id}
+    env = insert_env(env, closure_env_id, name, closure)
+    {closure, env}
+  end
+
+  def eval(expr = [:expand | _], env) do
+    # Save the environment just before macro expansion
+    expansion_env_id = env_id(env)
+    # Macro expansion cannot access locals - switch to global environment
+    macro_env = switch_env_frame(env, 0)
+    # Expand the macro in the global environment
+    {expansion, macro_env} = expand_macros(expr, macro_env)
+    # Finally evaluate the expanded macro in original environment
+    eval(expansion, switch_env(macro_env, expansion_env_id))
+  end
+
+  # Define evaluate by reducing to simpler expressions
+
+  def eval([:and, expr1, expr2], env) do
+    eval([:if, expr1, expr2, false], env)
+  end
+
+  def eval([:or, expr1, expr2], env) do
+    eval([:if, expr1, true, expr2], env)
+  end
+
+  def eval([:list | args], env) do
+    expansion = Enum.reduce(Enum.reverse(args), :null, fn elt, acc -> [:cons, elt, acc] end)
+    eval(expansion, env)
+  end
+
+  # Define function application syntax
+
+  def eval([op | args], env) do
+    {args, env} = Enum.map_reduce(args, env, &eval/2)
+    {op, env} = eval(op, env)
+    eval_apply(op, args, env)
+  end
+
+  # Apply the given arguments to the given function
+
+  def eval_apply({:closure, params, body, closure_env_id}, args, env) do
+    caller_env_id = env_id(env)
+    # Move to the closure/callee's environment
+    callee_env = switch_env(env, closure_env_id)
+    callee_env = push_env_frame(callee_env)
+    # Bind the closure's parameters
+    put_env = fn {param, arg}, acc -> put_env(acc, param, arg) end
+    callee_env = Enum.reduce(Enum.zip(params, args), callee_env, put_env)
+    # Bind mutually recursive functions in the body
+    callee_env = build_body_env(body, callee_env)
+    # Evaluate the body expressions
+    eval = fn expr, {_result, call_env} -> eval(expr, call_env) end
+    {result, env} = Enum.reduce(body, {nil, callee_env}, eval)
+    # Move back to the caller's environment
+    env = pop_env_frame(env)
+    {result, switch_env(env, caller_env_id)}
+  end
+
+  def eval_apply({:native, module, functor}, args, env) do
+    {apply(module, functor, args), env}
+  end
+
+  # Recursively expand macros
+
+  def expand_macros(expr = [:expand, reference | _], env) do
+    # Evaluate the reference expression - this should result in a function
+    {reference, env} = eval(reference, env)
+    # Apply the reference expression to representation of this expression
+    {expansion, env} = eval_apply(reference, [expr], env)
+    # Finally, attempt to expand the output of the macro
+    expand_macros(expansion, env)
+  end
+
+  def expand_macros(expr, env) when is_list(expr) do
+    Enum.map_reduce(expr, env, &expand_macros/2)
+  end
+
+  def expand_macros(expr, env), do: {expr, env}
+
+  # Recursively expand tuples to lists
+
+  def expand_tuples(expr) when is_tuple(expr) do
+    expand_tuples([:expand | Tuple.to_list(expr)])
+  end
+
+  def expand_tuples(expr) when is_list(expr) do
+    Enum.map(expr, &expand_tuples/1)
+  end
+
+  def expand_tuples(expr), do: expr
+
+  # Evaluate the given expression with a prelude prepended
 
   @doc """
   Evaluate the given expression with a prelude prepended
   """
-  def eval(expr) do
+  def eval(exprs) do
     {env, prelude} = default_env()
-    # IO.inspect([[:function, :_, [] | prelude] ++ [expr]])
-    eval([[:function, :_, [] | prelude] ++ [expr]], env)
+    # Add the top-level functions to the prelude
+    exprs = prelude ++ exprs
+    # Remove the syntactic sugar for macros
+    exprs = Enum.map(exprs, &expand_tuples/1)
+    # Create an environment where all macros are bound
+    macro_env = build_body_env(exprs, env)
+    # Expand all macro calls, macro environment not needed afterwards
+    {exprs, _} = Enum.map_reduce(exprs, macro_env, &expand_macros/2)
+    # Create new environment where all bindings have been expanded
+    env = build_body_env(exprs, env)
+    # Finally evaluate the expanded expressions in the context of an expanded environment
+    eval([[:function, :_, [] | exprs]], env)
   end
 
   @doc """
